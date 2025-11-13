@@ -10,6 +10,7 @@ const connectDB = require('./config/mongoDB');
 const logger = require('./config/logger');
 const apiRoutes = require('./routes/index'); // make sure this exists
 
+
 // Connect to DB
 connectDB();
 
@@ -19,6 +20,8 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 
 // Allow requests from your frontend (Next.js default port 3000)
 app.use(cors({

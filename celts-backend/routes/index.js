@@ -24,7 +24,7 @@ const facultyRoutes = require('./faculty');
 const studentRoutes = require('./student');
 const authRoutes = require('./auth'); 
 const adminBatchRoutes = require('./adminBatches');
-
+const teacherTestsRoutes = require('./teacherTests');
 
 
 
@@ -43,6 +43,7 @@ router.use('/media', mediaRoutes);
 router.use('/faculty', facultyRoutes);
 router.use('/student', studentRoutes);
 router.use('/admin/batches', adminBatchRoutes);
+router.use('/teacher/tests', teacherTestsRoutes);
 
 
 // ---------- ADMIN: Get user ----------

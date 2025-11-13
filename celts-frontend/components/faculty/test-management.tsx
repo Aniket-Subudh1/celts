@@ -76,11 +76,11 @@ export function TestManagement() {
     }
   }
 
-  const handleEditTest = (test: Test) => {
-    setEditingTest(test)
-    setFormData({ name: test.name, description: test.description, status: test.status })
-    setIsDialogOpen(true)
-  }
+  // const handleEditTest = (test: Test) => {
+  //   setEditingTest(test)
+  //   setFormData({ name: test.name, description: test.description, status: test.status })
+  //   setIsDialogOpen(true)
+  // }
 
   const handleSaveEdit = () => {
     if (editingTest && formData.name && formData.description) {
@@ -215,9 +215,9 @@ export function TestManagement() {
               <Button variant="outline" size="sm" className="gap-2 bg-transparent">
                 <Eye className="w-4 h-4" /> View Results
               </Button>
-              <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={() => handleEditTest(test)}>
+              {/* <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={() => handleEditTest(test)}>
                 <Edit2 className="w-4 h-4" /> Edit
-              </Button>
+              </Button> */}
               <Button
                 variant="outline"
                 size="sm"

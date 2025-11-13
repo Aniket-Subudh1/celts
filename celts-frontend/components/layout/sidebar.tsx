@@ -44,9 +44,9 @@ export function Sidebar({ items, header }: SidebarProps) {
         ))}
       </nav>
 
-      <div className="p-4 border-t border-sidebar-border">
+      {/* <div className="p-4 border-t border-sidebar-border">
         <button className="w-full px-4 py-2 text-sm rounded hover:bg-sidebar-accent transition">Logout</button>
-      </div>
+      </div> */}
     </div>
   )
 }

@@ -2,9 +2,30 @@
 const express = require('express');
 const router = express.Router();
 const { protect, restrictTo } = require('../middleware/authMiddleware');
+
+const Batch = require('../models/Batch'); 
 const Submission = require('../models/Submission');
 const AuditLog = require('../models/AuditLog');
 const { body, validationResult } = require('express-validator');
+
+
+// GET /api/faculty/batches
+router.get('/batches', protect, restrictTo(['faculty']), async (req, res) => {
+  try {
+    const uid = req.user?._id;
+    const batches = await Batch.find({ faculty: uid })
+      .populate({ path: 'students', select: '_id name email systemId createdAt' })
+      .populate({ path: 'faculty', select: '_id name email systemId' })
+      .lean();
+
+    // Return as-is so frontend can map and flatten
+    res.json(batches);
+  } catch (err) {
+    console.error('Error fetching faculty batches:', err);
+    res.status(500).json({ message: 'Server error fetching batches' });
+  }
+});
+
 
 // Faculty view submissions
 router.get('/submissions/:testId', protect, restrictTo(['faculty']), async (req, res) => {

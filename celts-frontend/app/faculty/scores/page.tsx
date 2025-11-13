@@ -16,10 +16,12 @@ import {
   Line,
   Legend,
 } from "recharts"
+import { useState, useEffect } from "react"
 
 const navItems = [
   { href: "/faculty/dashboard", label: "Dashboard", icon: <BarChart3 className="w-5 h-5" /> },
-  { href: "/faculty/tests", label: "Tests", icon: <FileText className="w-5 h-5" /> },
+  { href: "/faculty/create_test", label: "Create Test", icon: <FileText className="w-5 h-5" /> },
+  { href: "/faculty/view_test", label: "View Test", icon: <FileText className="w-5 h-5" /> },
   { href: "/faculty/students", label: "Students", icon: <Users className="w-5 h-5" /> },
   { href: "/faculty/scores", label: "Score Management", icon: <Settings className="w-5 h-5" /> },
 ]
@@ -47,8 +49,21 @@ const trendData = [
 ]
 
 export default function ScoreManagementPage() {
+  const [userName, setUserName] = useState<string>("")
+    
+      useEffect(() => {
+        const storedUser = localStorage.getItem("celts_user")
+        if (storedUser) {
+          try {
+            const parsed = JSON.parse(storedUser)
+            setUserName(parsed.name || "")
+          } catch (err) {
+            console.error("Error parsing user from storage:", err)
+          }
+        }
+      }, [])
   return (
-    <DashboardLayout navItems={navItems} sidebarHeader="CELTS Faculty" userName="Dr. John Smith">
+    <DashboardLayout navItems={navItems} sidebarHeader="CELTS Faculty" userName={userName}>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">Score Management</h1>
