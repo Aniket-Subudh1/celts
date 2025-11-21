@@ -30,6 +30,7 @@ const StudentStatsSchema = new mongoose.Schema(
 
     // latest examiner summary for writing (from AI)
     writingExaminerSummary: { type: String, default: null },
+    speakingExaminerSummary: { type: String, default: null },
 
     // overall band (average of available bands)
     overallBand: { type: Number, default: null },

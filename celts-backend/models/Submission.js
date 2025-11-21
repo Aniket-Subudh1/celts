@@ -58,6 +58,16 @@ const SubmissionSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+
+  geminiWritingEvaluationSummary: {
+    type: String,
+    default: null,
+  },
+  geminiSpeakingEvaluationSummary: {
+    type: String,
+    default: null,
+  },
+
 },
   { timestamps: true }
 );

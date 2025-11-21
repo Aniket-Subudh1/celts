@@ -1,4 +1,3 @@
-// app/faculty/stats/page.tsx (example)
 "use client";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";

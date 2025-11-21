@@ -62,6 +62,26 @@ async function updateStudentStatsForSkill({
     stats.writingExaminerSummary = geminiEvaluation.examiner_summary;
   }
 
+  // Store latest examiner summary for writing 
+  if (
+    skill === "writing" &&
+    geminiEvaluation &&
+    typeof geminiEvaluation.examiner_summary === "string"
+  ) {
+    stats.writingExaminerSummary = geminiEvaluation.examiner_summary;
+  }
+
+
+  //Store latest examiner summary for speaking
+  if (
+    skill === "speaking" &&
+    geminiEvaluation &&
+    typeof geminiEvaluation.examiner_summary === "string"
+  ) {
+    stats.speakingExaminerSummary = geminiEvaluation.examiner_summary;
+  }
+
+
   // Recompute overallBand as average of non-null skill bands
   const values = [
     stats.readingBand,
@@ -190,7 +210,38 @@ function extractAnswerForWritingQuestion(response, question, index) {
 async function gradeWriting(essayText, testQuestion) {
   const instruction = `
 You are an official IELTS Writing Task examiner.
-Evaluate the student's writing strictly according to IELTS criteria.
+
+Your job is to evaluate the candidate's writing STRICTLY according to official IELTS Writing band descriptors for Task 1 / Task 2, focusing on:
+
+- Task Response / Task Achievement
+- Coherence and Cohesion
+- Lexical Resource
+- Grammatical Range and Accuracy
+
+RESTRICTIONS (VERY IMPORTANT):
+- Do NOT address the candidate directly. Do NOT use "you" / "your".
+  Instead, write in third person: "the candidate", "the response", "the essay", "the writer".
+- Do NOT include greetings, motivational comments, praise, or sympathy.
+  No "Dear student", "Good job", "Keep it up", etc.
+- Do NOT speculate about the candidate's personal life, background, feelings, or abilities.
+- Focus ONLY on what is visible in the writing and how it matches IELTS band descriptors.
+- Use a neutral, professional examiner tone at all times.
+
+STRICTNESS RULES (MUST FOLLOW):
+- If the answer is extremely short or clearly far below the minimum length implied in the task
+  (for example when the question says "at least 150 words" or "at least 250 words"),
+  the band score must be very low, usually Band 4.0 or below, regardless of language quality.
+- If the answer does NOT address the question at all (off-topic, memorised answer, or random sentences),
+  Task Response / Task Achievement must be Band 3.0 or below and the overall band must be heavily limited.
+- If the answer only partially addresses the task (for example:
+  - ignoring one part of a two-part question,
+  - missing an overview in Task 1,
+  - not presenting or supporting a clear position in Task 2),
+  Task Response / Task Achievement must be clearly penalised.
+- Grammar and vocabulary scores must not be higher than the level actually demonstrated in the text.
+  Occasional complex sentences with frequent basic errors should not receive high bands.
+- Coherence and Cohesion must reflect paragraphing, logical progression, and use of cohesive devices.
+  Overuse or mechanical use of linking words must be penalised.
 
 Return ONLY valid JSON (no markdown, no explanation, no extra text).
 The JSON must have the shape:
@@ -206,15 +257,17 @@ The JSON must have the shape:
   "examiner_summary": string
 }
 
-"band_score" must be between 1 and 9 (it may be .0 or .5).
-Be strict, but fair.
+Rules:
+- "band_score" must be between 1 and 9.0 (it may be .0 or .5).
+- Each criteria "score" must also be between 1 and 9.0 where possible.
+- Feedback must be concise, IELTS-style, impersonal, and clearly linked to the band scores.
 `.trim();
 
   const userPrompt = `
 IELTS QUESTION:
 ${testQuestion || "N/A"}
 
-STUDENT ANSWER:
+CANDIDATE'S ANSWER:
 ${essayText || "(empty)"}
 `.trim();
 
@@ -222,10 +275,8 @@ ${essayText || "(empty)"}
 
   const result = await ai.chat.completions.create({
     model: "gpt-4o-mini",
-    messages: [
-      { role: "user", content: finalPrompt }
-    ],
-    response_format: { type: "json_object" }
+    messages: [{ role: "user", content: finalPrompt }],
+    response_format: { type: "json_object" },
   });
 
   const raw = result.choices?.[0]?.message?.content;
@@ -234,7 +285,7 @@ ${essayText || "(empty)"}
   }
 
   return JSON.parse(raw);
-};
+}
 
 
 // ---------------- Gemini grading: Speaking (placeholder) ----------------
@@ -249,13 +300,21 @@ ${essayText || "(empty)"}
 
 
 //OpenAI grading: Speaking
-async function gradeSpeaking({ questions, mediaPath, audioUrl, videoUrl, manualTranscription }) {
+async function gradeSpeaking({
+  questions,
+  mediaPath,
+  audioUrl,
+  videoUrl,
+  manualTranscription,
+}) {
   // We rely primarily on the local mediaPath saved by multer
   if (!mediaPath && !audioUrl && !videoUrl && !manualTranscription) {
-    throw new Error("No audio, video, or transcription provided for speaking evaluation.");
+    throw new Error(
+      "No audio, video, or transcription provided for speaking evaluation."
+    );
   }
 
-  // Transcription
+  // 1) TRANSCRIPTION
   let transcription = manualTranscription || "";
 
   if (!transcription && mediaPath) {
@@ -264,7 +323,7 @@ async function gradeSpeaking({ questions, mediaPath, audioUrl, videoUrl, manualT
 
       const t = await ai.audio.transcriptions.create({
         file: fileStream,
-        model: "gpt-4o-mini-transcribe", // or "whisper-1" if you prefer
+        model: "gpt-4o-mini-transcribe",
       });
 
       transcription = t.text;
@@ -278,29 +337,70 @@ async function gradeSpeaking({ questions, mediaPath, audioUrl, videoUrl, manualT
     throw new Error("Transcription is empty; cannot grade speaking response.");
   }
 
-  // Evaluation with Chat Completions
+  //EVALUATION PROMPT (STRICT IELTS, PER-QUESTION)
   const prompt = `
 You are an official IELTS Speaking examiner.
 
-### Questions:
+Your job is to evaluate the candidate's speaking STRICTLY according to IELTS Speaking criteria.
+
+RESTRICTIONS (VERY IMPORTANT):
+- Do NOT address the candidate directly. Do NOT use "you" / "your".
+  Instead, write in third person: "the candidate", "the speaker", "the response".
+- Do NOT include greetings, motivational comments, praise, or sympathy.
+  No "Dear student", "Good job", "Keep it up", etc.
+- Do NOT speculate about the candidate's personal life, background, feelings, or abilities.
+- Focus ONLY on what is evident from the spoken language in the transcription.
+- Use a neutral, professional examiner tone at all times.
+
+The speaking test consists of multiple questions. They are:
+
 ${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}
 
-### Candidate’s Spoken Response (transcription):
+TRANSCRIPTION OF THE CANDIDATE'S SPOKEN ANSWERS:
 "${transcription}"
 
-Return ONLY valid JSON in this exact format:
-{
-  "band_score": number,
-  "examiner_summary": string,
-  "criteria_breakdown": {
-    "fluency": number,
-    "coherence": number,
-    "vocabulary": number,
-    "grammar": number,
-    "pronunciation": number
-  }
-}
-`;
+STRICT CHECKING INSTRUCTIONS:
+
+1. For EACH question:
+   - Determine whether the transcription actually addresses that question.
+   - Classify coverage as:
+       "full"     – the question is clearly answered with sufficient development.
+       "partial"  – the question is somewhat addressed but lacks development or clarity.
+       "minimal"  – only a few words/phrases related to the question; barely an answer.
+       "none"     – the question is not answered at all.
+   - If a question explicitly expects the candidate to speak for around 1–2 minutes
+     (this may be indicated in the question text), then a response of only a
+     very short sentence or a few seconds of speech should be treated as
+     "minimal" or "partial" coverage and penalized accordingly. Keep the time limit a strict evaluation parameter.
+     Make sure the candidate is following all the rules being stated in question.
+     If time limit is too less give them a band score of less than 4.
+
+2. For EACH question, assign a per-question band_score (1–9, can be .0 or .5)
+   based on the candidate's performance relevant to that question, considering:
+   - Fluency
+   - Coherence
+   - Vocabulary
+   - Grammar
+   - Pronunciation
+
+3. Then compute an OVERALL band score for the whole speaking performance,
+   taking into account:
+   - Coverage of ALL questions (including missing or minimal answers).
+   - The quality of language across the entire transcription.
+   - Underlength responses or missing answers must reduce the overall band.
+
+4. The examiner_summary must:
+   - Be concise and IELTS-style.
+   - Be fully impersonal (no "you").
+   - Explicitly mention any questions that were not properly answered
+     or where the response was much shorter than required.
+
+Rules:
+- "overall_band_score" must be between 1 and 9 (may be .0 or .5).
+- "band_score" should normally be the same as "overall_band_score" and is kept
+  for backward compatibility.
+- Each per_question.band_score and criteria_breakdown values must also be in the range 1–9 where possible.
+`.trim();
 
   const result = await ai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -308,14 +408,39 @@ Return ONLY valid JSON in this exact format:
     response_format: { type: "json_object" },
   });
 
-  const parsed = JSON.parse(result.choices[0].message.content);
+  const parsed = JSON.parse(result.choices[0].message.content || "{}");
+
+  // Safety: normalize shape & ensure top-level band_score exists
+  let overallBand = parsed.overall_band_score;
+  if (typeof overallBand !== "number") {
+    // fallback: if per_question available, average them; else 0
+    if (Array.isArray(parsed.per_question) && parsed.per_question.length > 0) {
+      const bands = parsed.per_question
+        .map((q) => (typeof q.band_score === "number" ? q.band_score : null))
+        .filter((v) => v != null);
+      if (bands.length > 0) {
+        const avg =
+          bands.reduce((a, b) => a + b, 0) / bands.length;
+        overallBand = Math.round(avg * 2) / 2;
+      } else {
+        overallBand = 0;
+      }
+    } else {
+      overallBand = 0;
+    }
+  }
+
+  if (typeof parsed.band_score !== "number") {
+    parsed.band_score = overallBand;
+  }
 
   return {
     ...parsed,
+    overall_band_score: overallBand,
+    band_score: parsed.band_score,
     transcription,
   };
 }
-
 
 
 
@@ -501,6 +626,20 @@ submissionQueue.process(async (job) => {
       geminiEvaluation: evaluationResult,
       updatedAt: new Date(),
     };
+    // Skill-specific summaries
+    if (skill === "writing") {
+      updateDoc.geminiWritingEvaluationSummary =
+        evaluationResult && typeof evaluationResult.examiner_summary === "string"
+          ? evaluationResult.examiner_summary
+          : null;
+    }
+
+    if (skill === "speaking") {
+      updateDoc.geminiSpeakingEvaluationSummary =
+        evaluationResult && typeof evaluationResult.examiner_summary === "string"
+          ? evaluationResult.examiner_summary
+          : null;
+    }
 
     // For writing, also update totalMarks / maxMarks of the submission
     if (skill === "writing") {

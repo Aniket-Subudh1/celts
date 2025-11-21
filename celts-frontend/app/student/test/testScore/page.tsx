@@ -1,4 +1,3 @@
-// app/student/testScore/page.tsx
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
@@ -10,6 +9,27 @@ import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
 import { navItems } from "@/components/student/NavItems";
 
+interface CriteriaBreakdown {
+  // Writing-style breakdown (objects)
+  task_response?: { score?: number; feedback?: string };
+  cohesion_coherence?: { score?: number; feedback?: string };
+  lexical_resource?: { score?: number; feedback?: string };
+  grammatical_range_accuracy?: { score?: number; feedback?: string };
+
+  // Speaking-style breakdown (plain numbers)
+  fluency?: number;
+  coherence?: number;
+  vocabulary?: number;
+  grammar?: number;
+  pronunciation?: number;
+}
+
+interface GeminiEval {
+  band_score?: number;
+  criteria_breakdown?: CriteriaBreakdown;
+  examiner_summary?: string;
+  transcription?: string; // for speaking (if you want to show it later)
+}
 
 interface SubmissionSummary {
   submissionId: string;
@@ -30,20 +50,15 @@ interface SubmissionSummary {
 
   bandScore: number | null;
 
-  geminiEvaluation?: {
-    band_score?: number;
-    criteria_breakdown?: {
-      task_response?: { score?: number; feedback?: string };
-      cohesion_coherence?: { score?: number; feedback?: string };
-      lexical_resource?: { score?: number; feedback?: string };
-      grammatical_range_accuracy?: { score?: number; feedback?: string };
-      fluency_coherence?: { score?: number; feedback?: string };
-      pronunciation?: { score?: number; feedback?: string };
-    };
-    examiner_summary?: string;
-  } | null;
-
+  geminiEvaluation?: GeminiEval | null;
   geminiError?: string | null;
+
+  // ✅ NEW skill-specific summary fields from backend
+  geminiWritingEvaluationSummary?: string | null;
+  geminiSpeakingEvaluationSummary?: string | null;
+
+  // ✅ Generic, skill-aware summary from backend (optional)
+  examinerSummary?: string | null;
 
   student?: {
     _id?: string;
@@ -65,7 +80,10 @@ export default function TestScorePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = typeof window !== "undefined" ? localStorage.getItem("celts_user") : null;
+    const stored =
+      typeof window !== "undefined"
+        ? localStorage.getItem("celts_user")
+        : null;
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -165,13 +183,40 @@ export default function TestScorePage() {
 
   const attempted = summary?.attemptedCount ?? 0;
   const totalQ = summary?.totalQuestions ?? 0;
-  const unattempted = summary?.unattemptedCount ?? Math.max(totalQ - attempted, 0);
+  const unattempted =
+    summary?.unattemptedCount ?? Math.max(totalQ - attempted, 0);
 
-  const isWritingOrSpeaking =
-    summary?.skill === "writing" || summary?.skill === "speaking";
+  const isWriting = summary?.skill === "writing";
+  const isSpeaking = summary?.skill === "speaking";
+  const isWritingOrSpeaking = isWriting || isSpeaking;
+
+  // ✅ Decide which summary to show on the UI
+  const examinerSummary =
+    summary?.examinerSummary ||
+    (isWriting
+      ? summary?.geminiWritingEvaluationSummary
+      : isSpeaking
+        ? summary?.geminiSpeakingEvaluationSummary
+        : null) ||
+    summary?.geminiEvaluation?.examiner_summary ||
+    null;
+
+  const speakingCriteria =
+    isSpeaking && summary?.geminiEvaluation?.criteria_breakdown
+      ? summary.geminiEvaluation.criteria_breakdown
+      : undefined;
+
+  const speakingTranscription =
+    isSpeaking && summary?.geminiEvaluation?.transcription
+      ? summary.geminiEvaluation.transcription
+      : undefined;
 
   return (
-    <DashboardLayout navItems={navItems} sidebarHeader="CELTS Student" userName={userName}>
+    <DashboardLayout
+      navItems={navItems}
+      sidebarHeader="CELTS Student"
+      userName={userName}
+    >
       <div className="max-w-3xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -181,7 +226,11 @@ export default function TestScorePage() {
               {summary ? skillLabel(summary.skill) : "test"}.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => router.push("/student/test")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/student/test")}
+          >
             Back to My Tests
           </Button>
         </div>
@@ -199,20 +248,24 @@ export default function TestScorePage() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
-                    {skillLabel(summary.skill)} Test • {statusLabel(summary.status)}
+                    {skillLabel(summary.skill)} Test •{" "}
+                    {statusLabel(summary.status)}
                   </p>
                   <h2 className="text-2xl font-semibold">
                     {summary.testTitle || "Untitled Test"}
                   </h2>
                   {summary.createdAt && (
                     <p className="text-sm text-muted-foreground mt-2">
-                      Submitted at: {new Date(summary.createdAt).toLocaleString()}
+                      Submitted at:{" "}
+                      {new Date(summary.createdAt).toLocaleString()}
                     </p>
                   )}
                 </div>
                 {summary.student && (
                   <div className="text-right text-sm">
-                    <div className="font-semibold">{summary.student.name}</div>
+                    <div className="font-semibold">
+                      {summary.student.name}
+                    </div>
                     {summary.student.systemId && (
                       <div className="text-muted-foreground">
                         ID: {summary.student.systemId}
@@ -230,18 +283,24 @@ export default function TestScorePage() {
 
             {/* Score breakdown */}
             {isWritingOrSpeaking ? (
-              //For writing & speaking: show total Q, attempted, unattempted only
+              // For writing & speaking: show total Q, attempted, unattempted only
               <Card className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Total Questions</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Total Questions
+                  </p>
                   <p className="text-2xl font-bold">{totalQ}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Attempted</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Attempted
+                  </p>
                   <p className="text-2xl font-bold">{attempted}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Unattempted</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Unattempted
+                  </p>
                   <p className="text-2xl font-bold">{unattempted}</p>
                 </div>
               </Card>
@@ -249,19 +308,27 @@ export default function TestScorePage() {
               // Reading & listening
               <Card className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Total Questions</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Total Questions
+                  </p>
                   <p className="text-2xl font-bold">{totalQ}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Attempted</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Attempted
+                  </p>
                   <p className="text-2xl font-bold">{attempted}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Unattempted</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Unattempted
+                  </p>
                   <p className="text-2xl font-bold">{unattempted}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Total Marks</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Total Marks
+                  </p>
                   <p className="text-2xl font-bold">
                     {summary.totalMarks}/{summary.maxMarks}
                   </p>
@@ -284,13 +351,17 @@ export default function TestScorePage() {
               // Reading & listening: keep correct/incorrect + band
               <Card className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Correct</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Correct
+                  </p>
                   <p className="text-2xl font-bold text-green-600">
                     {summary.correctCount}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Incorrect</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Incorrect
+                  </p>
                   <p className="text-2xl font-bold text-red-600">
                     {summary.incorrectCount}
                   </p>
@@ -304,19 +375,22 @@ export default function TestScorePage() {
               </Card>
             )}
 
-            {/* AI evaluation details – writing only */}
-            {summary.skill === "writing" && summary.geminiEvaluation && (
+            {/* AI evaluation details – writing & speaking */}
+            {isWritingOrSpeaking && (examinerSummary || summary.geminiError) && (
               <Card className="p-4 space-y-4">
                 {/* Examiner summary */}
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Examiner Summary
-                  </p>
-                  <p className="text-sm">
-                    {summary.geminiEvaluation.examiner_summary ??
-                      "No summary available."}
-                  </p>
-                </div>
+                {examinerSummary && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      {isWriting
+                        ? "Writing Examiner Summary"
+                        : "Speaking Examiner Summary"}
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap">
+                      {examinerSummary}
+                    </p>
+                  </div>
+                )}
 
                 {/* Any AI error note */}
                 {summary.geminiError && (
@@ -324,11 +398,53 @@ export default function TestScorePage() {
                     AI evaluation note: {summary.geminiError}
                   </p>
                 )}
+
+                {/* Optional: show criteria and transcription for speaking */}
+                {isSpeaking && speakingCriteria && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Criteria Breakdown
+                    </p>
+                    <div className="grid grid-cols-2 gap-y-1 text-sm">
+                      <div>
+                        Fluency: {speakingCriteria.fluency ?? "—"}
+                      </div>
+                      <div>
+                        Coherence: {speakingCriteria.coherence ?? "—"}
+                      </div>
+                      <div>
+                        Vocabulary: {speakingCriteria.vocabulary ?? "—"}
+                      </div>
+                      <div>
+                        Grammar: {speakingCriteria.grammar ?? "—"}
+                      </div>
+                      <div>
+                        Pronunciation: {speakingCriteria.pronunciation ?? "—"}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+
+                {isSpeaking && speakingTranscription && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      Transcription
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap">
+                      {speakingTranscription}
+                    </p>
+                  </div>
+                )}
               </Card>
             )}
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => router.push("/student/test")}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/student/test")}
+              >
                 Back to My Tests
               </Button>
               <Button size="sm" onClick={() => router.push("/student/scores")}>

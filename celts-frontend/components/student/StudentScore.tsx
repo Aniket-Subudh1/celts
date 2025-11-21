@@ -9,7 +9,7 @@ import {
   BookOpen,
   Headphones,
   Pen,
-  Mic
+  Mic,
 } from "lucide-react";
 import api from "@/lib/api";
 
@@ -30,7 +30,9 @@ interface StudentStatsDoc {
   speakingBand?: NullableNumber;
   overallBand?: NullableNumber;
 
+  // AI examiner summaries
   writingExaminerSummary?: string;
+  speakingExaminerSummary?: string; 
 }
 
 function formatBand(b: NullableNumber): string {
@@ -133,7 +135,6 @@ export function StudentScore() {
 
   return (
     <div className="space-y-6">
-
       {/* Header */}
       <Card className="p-5 md:p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -214,7 +215,7 @@ export function StudentScore() {
           { label: "Reading", value: stats.readingBand, icon: BookOpen },
           { label: "Listening", value: stats.listeningBand, icon: Headphones },
           { label: "Writing", value: stats.writingBand, icon: Pen },
-          { label: "Speaking", value: stats.speakingBand, icon: Mic }
+          { label: "Speaking", value: stats.speakingBand, icon: Mic },
         ].map((item, i) => (
           <Card
             key={i}
@@ -245,6 +246,18 @@ export function StudentScore() {
           </p>
           <p className="text-sm leading-relaxed">
             {stats.writingExaminerSummary}
+          </p>
+        </Card>
+      )}
+
+      {/* Speaking Examiner Summary – NEW */}
+      {stats.speakingExaminerSummary && (
+        <Card className="p-4 space-y-2">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+            Speaking – Examiner Summary
+          </p>
+          <p className="text-sm leading-relaxed">
+            {stats.speakingExaminerSummary}
           </p>
         </Card>
       )}

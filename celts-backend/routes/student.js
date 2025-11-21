@@ -138,94 +138,108 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
 
 // POST /api/student/submit/:testId/speaking 
 // Accepts multipart/form-data with field "media" for audio/video
-router.post('/submit/:testId/speaking', protect, restrictTo(['student']), uploadStudentMedia.single('media'), async (req, res) => {
-  const { testId } = req.params;
-  const skill = 'speaking';
+// ---------- POST /api/student/submit/:testId/speaking ----------
+router.post(
+  '/submit/:testId/speaking',
+  protect,
+  restrictTo(['student']),
+  uploadStudentMedia.single('media'),
+  async (req, res) => {
+    const { testId } = req.params;
+    const skill = 'speaking';
 
-  try {
-    if (!mongoose.Types.ObjectId.isValid(testId)) {
-      return res.status(400).json({ message: 'Invalid testId' });
-    }
-
-    const testSet = await TestSet.findById(testId);
-    if (!testSet) {
-      return res.status(404).json({ message: 'Test not found' });
-    }
-
-    const allowed = await canStudentStart(testSet, req.user);
-    if (!allowed) {
-      return res
-        .status(403)
-        .json({ message: 'Not allowed to start/submit this test now (timing rules)' });
-    }
-
-    // response & evaluationPayload come as JSON strings in multipart
-    let responseObj = {};
-    let evaluationPayload = null;
-
-    if (req.body.response) {
-      try {
-        responseObj = JSON.parse(req.body.response);
-      } catch {
-        responseObj = {};
+    try {
+      if (!mongoose.Types.ObjectId.isValid(testId)) {
+        return res.status(400).json({ message: 'Invalid testId' });
       }
-    }
 
-    if (req.body.evaluationPayload) {
-      try {
-        evaluationPayload = JSON.parse(req.body.evaluationPayload);
-      } catch {
-        evaluationPayload = null;
+      const testSet = await TestSet.findById(testId);
+      if (!testSet) {
+        return res.status(404).json({ message: 'Test not found' });
       }
+
+      const allowed = await canStudentStart(testSet, req.user);
+      if (!allowed) {
+        return res
+          .status(403)
+          .json({ message: 'Not allowed to start/submit this test now (timing rules)' });
+      }
+
+      // response & evaluationPayload come as JSON strings in multipart
+      let responseObj = {};
+      let evaluationPayload = null;
+
+      if (req.body.response) {
+        try {
+          responseObj = JSON.parse(req.body.response);
+        } catch {
+          responseObj = {};
+        }
+      }
+
+      if (req.body.evaluationPayload) {
+        try {
+          evaluationPayload = JSON.parse(req.body.evaluationPayload);
+        } catch {
+          evaluationPayload = null;
+        }
+      }
+
+      // ✅ Count speaking questions & attempts
+      const speakingQuestions = (testSet.questions || []).filter(
+        (q) => q.questionType === 'speaking'
+      );
+
+      const totalQuestions = speakingQuestions.length;
+
+      // Simplest logic: if we received a media file, treat it as "attempted"
+      const attemptedCount = req.file && totalQuestions > 0 ? totalQuestions : 0;
+      const unattemptedCount = Math.max(totalQuestions - attemptedCount, 0);
+
+      const submissionPayload = {
+        student: req.user._id,
+        testSet: testSet._id,
+        skill,
+        response: responseObj,
+        status: 'pending', // will be graded by worker
+        totalMarks: 0,
+        maxMarks: 0,
+        correctCount: 0,
+        incorrectCount: 0,
+        totalQuestions,
+        attemptedCount,
+        unattemptedCount,
+        bandScore: null,
+        mediaPath: req.file ? req.file.path : null,
+      };
+
+      const submission = await Submission.create(submissionPayload);
+
+      const jobData = {
+        submissionId: submission._id.toString(),
+        studentId: req.user._id.toString(),
+        testId: testSet._id.toString(),
+        skill,
+        response: responseObj,
+        mediaPath: req.file ? req.file.path : null,
+        evaluationPayload,
+      };
+
+      const job = await submissionQueue.add(jobData);
+      const jobId = job.id || null;
+
+      return res.status(202).json({
+        message: 'Speaking submission accepted for grading',
+        submissionId: submission._id,
+        jobId,
+        summary: null,
+      });
+    } catch (err) {
+      console.error('[POST /student/submit/:testId/speaking] error:', err);
+      return res.status(500).json({ message: err.message || 'Server error' });
     }
-
-    // Basic counters (no auto marks for speaking at submit time)
-    const submissionPayload = {
-      student: req.user._id,
-      testSet: testSet._id,
-      skill,
-      response: responseObj,
-      status: 'pending', // will be graded by worker
-      totalMarks: 0,
-      maxMarks: 0,
-      correctCount: 0,
-      incorrectCount: 0,
-      totalQuestions: 0,
-      attemptedCount: 0,
-      unattemptedCount: 0,
-      bandScore: null,
-      mediaPath: req.file ? req.file.path : null,
-    };
-
-    const submission = await Submission.create(submissionPayload);
-
-    // Queue speaking job for async evaluation
-    const jobData = {
-      submissionId: submission._id.toString(),
-      studentId: req.user._id.toString(),
-      testId: testSet._id.toString(),
-      skill,
-      response: responseObj,
-      mediaPath: req.file ? req.file.path : null,
-      evaluationPayload,
-    };
-
-    const job = await submissionQueue.add(jobData);
-    const jobId = job.id || null;
-
-    return res.status(202).json({
-      message: 'Speaking submission accepted for grading',
-      submissionId: submission._id,
-      jobId,
-      summary: null,
-    });
-  } catch (err) {
-    console.error('[POST /student/submit/:testId/speaking] error:', err);
-    return res.status(500).json({ message: err.message || 'Server error' });
   }
-}
 );
-
 
 
 // Helper: can student start test?
@@ -473,6 +487,18 @@ router.get('/submissions/:id', protect, restrictTo(['student']), async (req, res
       return res.status(403).json({ message: 'Not allowed to view this submission' });
     }
 
+    // Decide which summary to expose as the generic "examinerSummary"
+      let examinerSummary = null;
+      if (sub.skill === 'writing' && sub.geminiWritingEvaluationSummary) {
+        examinerSummary = sub.geminiWritingEvaluationSummary;
+      } else if (sub.skill === 'speaking' && sub.geminiSpeakingEvaluationSummary) {
+        examinerSummary = sub.geminiSpeakingEvaluationSummary;
+      } else if (sub.geminiEvaluation && sub.geminiEvaluation.examiner_summary) {
+        // fallback to whatever is inside geminiEvaluation
+        examinerSummary = sub.geminiEvaluation.examiner_summary;
+      }
+
+
     return res.json({
       submissionId: sub._id,
       testId: sub.testSet?._id,
@@ -494,7 +520,10 @@ router.get('/submissions/:id', protect, restrictTo(['student']), async (req, res
       geminiError: sub.geminiError || null,
 
       bandScore: sub.bandScore ?? null,
-
+      geminiWritingEvaluationSummary: sub.geminiWritingEvaluationSummary ?? null,
+      geminiSpeakingEvaluationSummary: sub.geminiSpeakingEvaluationSummary ?? null, 
+      examinerSummary,
+      
       student: {
         _id: sub.student?._id,
         name: sub.student?.name,
