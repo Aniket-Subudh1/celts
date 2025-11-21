@@ -1,11 +1,9 @@
 "use client"
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { Button } from "@/components/ui/button"
-import { AdminStats } from "@/components/admin/admin-stats"
-import { UserManagement } from "@/components/admin/user-management"
 import { useEffect, useState } from "react"
-import { navItems } from "@/components/admin/nav-items"
+import { navItems } from "@/components/admin/NavItems"
+import { AdminDashboardPage } from "@/components/admin/AdminDashboard"
 
 
 export default function AdminDashboard() {
@@ -28,24 +26,7 @@ export default function AdminDashboard() {
 
   return (
     <DashboardLayout navItems={navItems} sidebarHeader="CELTS Admin" userName= {userName} >
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
-          <p className="text-muted-foreground">Manage users, permissions, and system analytics</p>
-        </div>
-
-        <div className="flex gap-2 mb-6">
-          <Button variant={currentTab === "overview" ? "default" : "outline"} onClick={() => setCurrentTab("overview")}>
-            Overview
-          </Button>
-          <Button variant={currentTab === "users" ? "default" : "outline"} onClick={() => setCurrentTab("users")}>
-            User Management
-          </Button>
-        </div>
-
-        {currentTab === "overview" && <AdminStats />}
-        {currentTab === "users" && <UserManagement />}
-      </div>
+      <AdminDashboardPage />
     </DashboardLayout>
   )
 }

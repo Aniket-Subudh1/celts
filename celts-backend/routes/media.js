@@ -7,28 +7,20 @@ const { protect, restrictTo } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// --- Local storage config ---
-const uploadDir = path.join(__dirname, "../uploads/audio");
+// Directories 
+const adminUploadDir = path.join(__dirname, "../uploads/audio");
+const studentUploadDir = path.join(__dirname, "../uploads/studentSubmission");
 
-// make sure directory exists
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// Make sure directories exist
+for (const dir of [adminUploadDir, studentUploadDir]) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
-// configure multer to store files locally
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `${unique}${ext}`);
-  },
-});
-
+// Allowed MIME types 
 const allowedMimes = new Set([
-  "audio/mpeg",   // mp3
+  "audio/mpeg",
   "audio/mp3",
   "audio/wav",
   "audio/x-wav",
@@ -36,48 +28,73 @@ const allowedMimes = new Set([
   "audio/mp4",
   "audio/aac",
   "audio/ogg",
-  "audio/webm"
+  "audio/webm",
+  "video/mp4",
+  "video/webm",
+  "video/ogg",
+  "video/quicktime",  // mov
+  "video/x-matroska"  // mkv
 ]);
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB limit (adjust as needed)
-  fileFilter: (req, file, cb) => {
-    if (!allowedMimes.has(file.mimetype)) {
-      // reject with multer-style error
-      const err = new Error("Only audio files are allowed (mp3, wav, m4a, ogg, webm).");
-      err.code = "INVALID_FILE_TYPE";
-      return cb(err);
-    }
-    cb(null, true);
-  },
-});
+// Multer storage factory 
+function createUploader(destinationFolder) {
+  return multer({
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => cb(null, destinationFolder),
+      filename: (req, file, cb) => {
+        const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        const ext = path.extname(file.originalname);
+        cb(null, `${unique}${ext}`);
+      },
+    }),
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+    fileFilter: (req, file, cb) => {
+      if (!allowedMimes.has(file.mimetype)) {
+        const err = new Error("Invalid file type. Audio & video only.");
+        err.code = "INVALID_FILE_TYPE";
+        return cb(err);
+      }
+      cb(null, true);
+    },
+  });
+}
 
-// --- Upload route: POST /media/upload ---
-router.post(
-  "/upload",
-  protect,
-  restrictTo(["faculty", "admin"]),
-  upload.single("file"),
-  async (req, res) => {
-    try {
-      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+const adminUpload = createUploader(adminUploadDir);
+const studentUpload = createUploader(studentUploadDir);
 
-      // build local URL for development (ensure your server serves /uploads statically)
-      const fileUrl = `${req.protocol}://${req.get("host")}/uploads/audio/${req.file.filename}`;
 
-      return res.json({
-        message: "Audio uploaded successfully",
-        url: fileUrl,
-      });
-    } catch (err) {
-      console.error("Audio upload error:", err);
-      return res.status(500).json({ message: "Error uploading audio" });
-    }
+// Admin/Faculty upload 
+router.post("/upload", protect, restrictTo(["faculty", "admin"]), adminUpload.single("file"), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/audio/${req.file.filename}`;
+    res.json({ message: "Audio uploaded successfully", url: fileUrl });
+  } catch (err) {
+    console.error("Admin upload error:", err);
+    res.status(500).json({ message: "Error uploading audio" });
   }
+}
 );
 
-// Multer error handler for this router (optional, but helpful)
+
+
+// Student upload (audio/video)
+router.post("/upload/student", protect, restrictTo(["student"]), studentUpload.single("file"), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/studentSubmission/${req.file.filename}`;
+    res.json({ message: "Student submission saved", url: fileUrl });
+  } catch (err) {
+    console.error("Student upload error:", err);
+    res.status(500).json({ message: "Error uploading student submission" });
+  }
+}
+);
+
+
+// Multer error handler
 router.use((err, req, res, next) => {
   if (err) {
     console.error("Media route error:", err);

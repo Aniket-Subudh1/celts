@@ -4,7 +4,7 @@ import { Lock } from "lucide-react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { navItems } from "@/components/admin/nav-items"
+import { navItems } from "@/components/admin/NavItems"
 import { useState, useEffect } from "react"
 
 const permissions = [
@@ -25,7 +25,7 @@ const permissions = [
   {
     name: "Create Tests",
     key: "create_tests",
-    admin: true,
+    admin: false,
     faculty: true,
     student: false,
   },
@@ -35,13 +35,6 @@ const permissions = [
     admin: true,
     faculty: true,
     student: true,
-  },
-  {
-    name: "Grade Tests",
-    key: "grade_tests",
-    admin: true,
-    faculty: true,
-    student: false,
   },
   {
     name: "View Analytics",

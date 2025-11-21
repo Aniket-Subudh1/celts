@@ -7,6 +7,7 @@ if (process.env.REDIS_URL) {
   redisClient.on('error', (err) => {
     console.warn('Redis connection error:', err.message);
   });
+  console.log("redis connected")
 } else {
   console.warn('REDIS_URL not set; queue will fallback to inline processing.');
 }

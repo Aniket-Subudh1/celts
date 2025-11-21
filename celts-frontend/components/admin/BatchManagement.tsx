@@ -45,7 +45,10 @@ export function BatchManagement() {
   const [studentOptions, setStudentOptions] = useState<UserOption[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [selectedFacultyId, setSelectedFacultyId] = useState<string | null>(null);
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+
+  // ✅ NEW: support selecting MULTIPLE students for bulk assign
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignMessage, setAssignMessage] = useState<string | null>(null);
 
@@ -53,7 +56,7 @@ export function BatchManagement() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editBatch, setEditBatch] = useState<Batch | null>(null);
 
-  // ---------- NEW: Student-list dialog state ----------
+  // Student-list dialog
   const [isStudentDialogOpen, setIsStudentDialogOpen] = useState(false);
   const [studentListForDialog, setStudentListForDialog] = useState<
     { id?: string; name: string; systemId?: string }[]
@@ -179,7 +182,7 @@ export function BatchManagement() {
     }
   };
 
-  // Assign faculty
+  // Assign faculty (single, as before)
   const handleAssignFaculty = async () => {
     setAssignMessage(null);
     if (!selectedBatchId || !selectedFacultyId) {
@@ -205,33 +208,34 @@ export function BatchManagement() {
     }
   };
 
-  // Assign student
-  const handleAssignStudent = async () => {
+  // ✅ NEW: Bulk assign students
+  const handleAssignStudentsBulk = async () => {
     setAssignMessage(null);
-    if (!selectedBatchId || !selectedStudentId) {
-      setAssignMessage("Select a batch and a student.");
+    if (!selectedBatchId || selectedStudentIds.length === 0) {
+      setAssignMessage("Select a batch and at least one student.");
       return;
     }
     setAssignLoading(true);
     try {
       const res = await api.apiPost(
-        `/admin/batches/${selectedBatchId}/assign-student/${selectedStudentId}`,
-        {}
+        `/admin/batches/${selectedBatchId}/assign-students-bulk`,
+        { studentIds: selectedStudentIds }
       );
       setAssignLoading(false);
       if (!res.ok) {
-        setAssignMessage(res.error?.message || "Failed to assign student");
+        setAssignMessage(res.error?.message || "Failed to assign students");
         return;
       }
-      setAssignMessage("Student assigned successfully.");
+      setAssignMessage("Students assigned successfully.");
+      setSelectedStudentIds([]); // clear selection
       await fetchAll();
     } catch (err: any) {
       setAssignLoading(false);
-      setAssignMessage(err.message || "Failed to assign student");
+      setAssignMessage(err.message || "Failed to assign students");
     }
   };
 
-  // ---------- NEW: open student list dialog for a batch ----------
+  // ---------- Student list dialog ----------
   const openStudentsDialog = async (batchId: string) => {
     setStudentsDialogError(null);
     setStudentsDialogLoading(true);
@@ -239,19 +243,18 @@ export function BatchManagement() {
     setIsStudentDialogOpen(true);
 
     try {
-      // Try to fetch batch detail if server provides a detail endpoint
-      // (some servers expose GET /admin/batches/:id). We attempt that first.
       const detailRes = await api.apiGet(`/admin/batches/${batchId}`);
       if (detailRes.ok && detailRes.data) {
-        // server might return either object or array
         const batchObj = Array.isArray(detailRes.data) ? detailRes.data[0] : detailRes.data;
         const studentsRaw = batchObj?.students ?? [];
         const normalized = studentsRaw.map((s: any) => {
-          // If server gives student objects
           if (s && typeof s === "object") {
-            return { id: s._id || s.id, name: s.name || String(s), systemId: s.systemId || s.system_id || "" };
+            return {
+              id: s._id || s.id,
+              name: s.name || String(s),
+              systemId: s.systemId || s.system_id || "",
+            };
           }
-          // If server gives strings (names), keep name only
           return { name: String(s), systemId: "" };
         });
         setStudentListForDialog(normalized);
@@ -259,10 +262,9 @@ export function BatchManagement() {
         return;
       }
     } catch (err) {
-      // ignore — we'll fallback to using existing fetched batches data
+      // ignore & fallback
     }
 
-    // Fallback: use local `batches` state (may contain strings or objects)
     const local = batches.find((b) => String(b._id) === String(batchId));
     if (!local) {
       setStudentListForDialog([]);
@@ -282,14 +284,13 @@ export function BatchManagement() {
     setStudentsDialogLoading(false);
   };
 
-  // ---------- NEW: unassign student from batch ----------
   const handleUnassignStudent = async (studentId?: string) => {
     if (!currentDialogBatchId) return;
     if (!studentId) {
       alert("Student id not available for this record. Cannot unassign.");
       return;
     }
-    if (!confirm("Remove this student from the batch? The student will become unassigned.")) return;
+    if (!confirm("Remove this student from the batch?")) return;
 
     try {
       const res = await api.apiDelete(
@@ -299,7 +300,6 @@ export function BatchManagement() {
         alert(res.error?.message || "Failed to unassign student");
         return;
       }
-      // update dialog list from returned batch if provided
       if (res.data?.batch) {
         const updatedStudents = (res.data.batch.students || []).map((s: any) => ({
           id: s._id || s.id,
@@ -308,10 +308,8 @@ export function BatchManagement() {
         }));
         setStudentListForDialog(updatedStudents);
       } else {
-        // otherwise, remove the student locally from dialog list
-        setStudentListForDialog(prev => prev.filter(s => s.id !== studentId));
+        setStudentListForDialog((prev) => prev.filter((s) => s.id !== studentId));
       }
-      // refresh main table to reflect change
       await fetchAll();
     } catch (err: any) {
       alert(err.message || "Error unassigning student");
@@ -417,7 +415,7 @@ export function BatchManagement() {
           </Button>
         </div>
 
-        {/* Student */}
+        {/* Students (BULK) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div>
             <label className="text-sm block mb-1">Select Batch</label>
@@ -436,13 +434,20 @@ export function BatchManagement() {
           </div>
 
           <div>
-            <label className="text-sm block mb-1">Select Student</label>
+            <label className="text-sm block mb-1">
+              Select Students (Ctrl/Cmd + click for multi-select)
+            </label>
             <select
-              className="w-full px-3 py-2 border rounded"
-              value={selectedStudentId ?? ""}
-              onChange={(e) => setSelectedStudentId(e.target.value || null)}
+              multiple
+              className="w-full px-3 py-2 border rounded h-40"
+              value={selectedStudentIds}
+              onChange={(e) => {
+                const values = Array.from(e.target.selectedOptions).map(
+                  (opt) => opt.value
+                );
+                setSelectedStudentIds(values);
+              }}
             >
-              <option value="">-- Select student --</option>
               {studentOptions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.systemId} - {s.name}
@@ -452,10 +457,10 @@ export function BatchManagement() {
           </div>
 
           <Button
-            onClick={handleAssignStudent}
-            disabled={assignLoading || !selectedBatchId || !selectedStudentId}
+            onClick={handleAssignStudentsBulk}
+            disabled={assignLoading || !selectedBatchId || selectedStudentIds.length === 0}
           >
-            Assign Student
+            Assign Students (Bulk)
           </Button>
         </div>
 
@@ -464,7 +469,7 @@ export function BatchManagement() {
         )}
       </Card>
 
-      {/* ========== TABLE FOR EXISTING BATCHES ========== */}
+      {/* TABLE FOR EXISTING BATCHES */}
       <Card className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead className="bg-gray-100 border-b">
@@ -558,19 +563,30 @@ export function BatchManagement() {
             ) : (
               <div className="space-y-2">
                 {studentListForDialog.map((s) => (
-                  <div key={s.id ?? s.name} className="flex items-center justify-between border rounded p-2">
+                  <div
+                    key={s.id ?? s.name}
+                    className="flex items-center justify-between border rounded p-2"
+                  >
                     <div>
                       <div className="text-sm font-medium">{s.name}</div>
-                      <div className="text-xs text-muted-foreground">{s.systemId || "—"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {s.systemId || "—"}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => {
-                        if (!s.id) {
-                          alert('This student record does not contain an id; cannot remove from batch. Use assign/unassign from admin panel.');
-                          return;
-                        }
-                        handleUnassignStudent(s.id);
-                      }}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          if (!s.id) {
+                            alert(
+                              "This student record does not contain an id; cannot remove from batch."
+                            );
+                            return;
+                          }
+                          handleUnassignStudent(s.id);
+                        }}
+                      >
                         Remove
                       </Button>
                     </div>

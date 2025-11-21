@@ -43,6 +43,16 @@ export async function apiDelete(path: string) {
   return request(path, { method: 'DELETE' }); 
 }
 
+export const apiPatch = async (path: string, body: any) => {
+  const response = await fetch(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return response.json()
+}
+
+
 /**
  * Upload helper: expects `form` to be FormData and does NOT set JSON Content-Type.
  * Returns ApiResponse with data from the server.
@@ -63,4 +73,4 @@ export async function apiUpload(path: string, form: FormData) {
   }
 }
 
-export default { apiGet, apiPost, apiPut, apiDelete, apiUpload };
+export default { apiGet, apiPost, apiPut, apiDelete, apiUpload, apiPatch };

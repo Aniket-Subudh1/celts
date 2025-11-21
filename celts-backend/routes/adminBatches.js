@@ -4,9 +4,7 @@ const Batch = require('../models/Batch');
 const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
 
-/**
- * GET /api/admin/batches
- */
+// GET /api/admin/batches
 router.get('/', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const batches = await Batch.find({})
@@ -37,9 +35,7 @@ router.get('/', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-/**
- * POST /api/admin/batches
- */
+// POST /api/admin/batches
 router.post('/', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { name, program, year, section } = req.body;
@@ -65,10 +61,7 @@ router.post('/', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-/**
- * PUT /api/admin/batches/:id
- * - Update batch details
- */
+//  PUT /api/admin/batches/:id    (Update batch details)   
 router.put('/:id', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
@@ -91,10 +84,7 @@ router.put('/:id', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/admin/batches/:id
- * - Delete a batch
- */
+// DELETE /api/admin/batches/:id
 router.delete('/:id', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
@@ -107,10 +97,7 @@ router.delete('/:id', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-/**
- * POST /api/admin/batches/:batchId/assign-faculty/:facultyId
- * - Assign or replace faculty for a batch (only one allowed)
- */
+// POST /api/admin/batches/:batchId/assign-faculty/:facultyId  (Assign or replace faculty for a batch (only one allowed))
 router.post('/:batchId/assign-faculty/:facultyId', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { batchId, facultyId } = req.params;
@@ -122,7 +109,7 @@ router.post('/:batchId/assign-faculty/:facultyId', protect, restrictTo(['admin']
     const batch = await Batch.findById(batchId);
     if (!batch) return res.status(404).json({ message: 'Batch not found' });
 
-    // ✅ Only one faculty allowed — replace existing
+    //Only one faculty allowed — replace existing
     batch.faculty = [facultyId];
     await batch.save();
 
@@ -138,24 +125,21 @@ router.post('/:batchId/assign-faculty/:facultyId', protect, restrictTo(['admin']
   }
 });
 
-/**
- * POST /api/admin/batches/:batchId/assign-student/:studentId
- * - Assign a student to a batch (only one batch per student allowed)
- */
+// POST /api/admin/batches/:batchId/assign-student/:studentId  (Assign a student to a batch (only one batch per student allowed))
 router.post('/:batchId/assign-student/:studentId', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { batchId, studentId } = req.params;
 
-    // ✅ Validate student existence and role
+    //Validate student existence and role
     const student = await User.findById(studentId);
     if (!student) return res.status(404).json({ message: 'Student not found' });
     if (student.role !== 'student') return res.status(400).json({ message: 'User is not a student' });
 
-    // ✅ Validate batch existence
+    //Validate batch existence
     const batch = await Batch.findById(batchId);
     if (!batch) return res.status(404).json({ message: 'Batch not found' });
 
-    // ✅ Check if student already belongs to another batch
+    //Check if student already belongs to another batch
     const existingBatch = await Batch.findOne({ students: studentId });
     if (existingBatch && String(existingBatch._id) !== String(batchId)) {
       return res.status(400).json({
@@ -163,7 +147,7 @@ router.post('/:batchId/assign-student/:studentId', protect, restrictTo(['admin']
       });
     }
 
-    // ✅ Add only if not already in current batch
+    //Add only if not already in current batch
     if (!batch.students.some(s => String(s) === String(studentId))) {
       batch.students.push(studentId);
       await batch.save();
@@ -183,10 +167,97 @@ router.post('/:batchId/assign-student/:studentId', protect, restrictTo(['admin']
 
 
 
-/**
- * DELETE /api/admin/batches/:batchId/unassign-student/:studentId
- * - Removes a student from a batch
- */
+
+// POST /api/admin/batches/:batchId/assign-students-bulk
+// Body: { studentIds: string[] }
+router.post(
+  '/:batchId/assign-students-bulk',
+  protect,
+  restrictTo(['admin']),
+  async (req, res) => {
+    try {
+      const { batchId } = req.params;
+      const { studentIds } = req.body;
+
+      if (!mongoose.Types.ObjectId.isValid(batchId)) {
+        return res.status(400).json({ message: 'Invalid batchId' });
+      }
+
+      if (!Array.isArray(studentIds) || studentIds.length === 0) {
+        return res
+          .status(400)
+          .json({ message: 'studentIds must be a non-empty array' });
+      }
+
+      const validStudentIds = studentIds.filter((id) =>
+        mongoose.Types.ObjectId.isValid(id)
+      );
+
+      if (validStudentIds.length === 0) {
+        return res
+          .status(400)
+          .json({ message: 'No valid student ids provided' });
+      }
+
+      // ensure they are actual student users
+      const students = await User.find({
+        _id: { $in: validStudentIds },
+        role: 'student',
+      })
+        .select('_id name systemId')
+        .lean();
+
+      if (students.length === 0) {
+        return res
+          .status(400)
+          .json({ message: 'No valid student accounts found for given ids' });
+      }
+
+      const batch = await Batch.findById(batchId);
+      if (!batch) {
+        return res.status(404).json({ message: 'Batch not found' });
+      }
+
+      if (!Array.isArray(batch.students)) {
+        batch.students = [];
+      }
+
+      const existing = new Set(
+        batch.students.map((s) => String(s))
+      );
+
+      for (const s of students) {
+        const sid = String(s._id);
+        if (!existing.has(sid)) {
+          batch.students.push(s._id);
+          existing.add(sid);
+        }
+      }
+
+      await batch.save();
+
+      const populated = await Batch.findById(batchId)
+        .populate('students', 'name email systemId')
+        .populate('faculty', 'name email systemId')
+        .lean();
+
+      return res.json({
+        message: `Assigned ${students.length} student(s) to batch.`,
+        batch: populated,
+      });
+    } catch (err) {
+      console.error('[Bulk assign students] error:', err);
+      return res
+        .status(500)
+        .json({ message: 'Server error assigning students in bulk' });
+    }
+  }
+);
+
+
+
+
+// DELETE /api/admin/batches/:batchId/unassign-student/:studentId
 router.delete('/:batchId/unassign-student/:studentId', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { batchId, studentId } = req.params;
@@ -213,9 +284,6 @@ router.delete('/:batchId/unassign-student/:studentId', protect, restrictTo(['adm
     res.status(500).json({ message: 'Server error unassigning student' });
   }
 });
-
-
-// In routes for admin batches (same file you sent)
 
 // GET /api/admin/batches/:id  -> returns full populated objects (with _id)
 router.get('/:id', protect, restrictTo(['admin']), async (req, res) => {
@@ -259,8 +327,5 @@ router.get('/:id', protect, restrictTo(['admin']), async (req, res) => {
     res.status(500).json({ message: 'Server error fetching batch detail' });
   }
 });
-
-
-
 
 module.exports = router;

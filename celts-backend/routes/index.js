@@ -1,10 +1,6 @@
 // routes/index.js
-// Main router - SRS-compliant entry points and a few admin endpoints kept here.
-// Replace your existing file with this one.
-
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 
 const User = require('../models/User');
@@ -12,24 +8,17 @@ const TestSet = require('../models/TestSet');
 const Submission = require('../models/Submission');
 
 const { protect, restrictTo } = require('../middleware/authMiddleware');
-const { submissionQueue } = require('../services/queue'); // queue (fallback inline if no Redis)
-const { rawToBand } = require('../utils/scoring'); // if needed elsewhere
+const { submissionQueue } = require('../services/queue'); 
 
-// additional routers you already created
 const adminAssignRoutes = require('./adminAssignments');
 const adminBulkRoutes = require('./adminBulk');
+const adminBatchRoutes = require('./adminBatches');
 const proctorRoutes = require('./proctor');
 const mediaRoutes = require('./media');
 const facultyRoutes = require('./faculty');
 const studentRoutes = require('./student');
-const authRoutes = require('./auth'); 
-const adminBatchRoutes = require('./adminBatches');
 const teacherTestsRoutes = require('./teacherTests');
-
-
-
-// Helper: generate JWT token
-const generateToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+const studentStatsRoutes = require('./studentStats');
 
 // Root health check
 router.get('/', (req, res) => res.json({ message: 'CELTS Backend running successfully!', timestamp: Date.now() }));
@@ -44,9 +33,12 @@ router.use('/faculty', facultyRoutes);
 router.use('/student', studentRoutes);
 router.use('/admin/batches', adminBatchRoutes);
 router.use('/teacher/tests', teacherTestsRoutes);
+router.use('/student', studentStatsRoutes);
+router.use('/studentStats', studentStatsRoutes);
 
 
-// ---------- ADMIN: Get user ----------
+
+// ADMIN: Get user
 router.get('/admin/users', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { role } = req.query;
@@ -62,7 +54,7 @@ router.get('/admin/users', protect, restrictTo(['admin']), async (req, res) => {
 
 
 
-// ---------- ADMIN: Create / Onboard user (enhanced with optional immediate assignment) ----------
+// ADMIN: Create / Onboard user (enhanced with optional immediate assignment)
 router.post('/admin/users', protect, restrictTo(['admin']), async (req, res) => {
   const { name, email, systemId,  password, role, canEditScores = false, assignedFaculty, cohort } = req.body;
   try {
@@ -102,7 +94,7 @@ router.post('/admin/users', protect, restrictTo(['admin']), async (req, res) => 
 });
 
 
-// ---------- ADMIN: Update user ----------
+// ADMIN: Update user
 router.put('/admin/users/:id', protect, restrictTo(['admin']), async (req, res) => {
   const id = req.params.id;
   try {
@@ -174,7 +166,7 @@ router.put('/admin/users/:id', protect, restrictTo(['admin']), async (req, res) 
 });
 
 
-// ---------- ADMIN: Delete User ----------
+// ADMIN: Delete User
 router.delete('/admin/users/:id', protect, restrictTo(['admin']), async (req, res) => {
   const id = req.params.id;
 
@@ -203,7 +195,6 @@ router.delete('/admin/users/:id', protect, restrictTo(['admin']), async (req, re
       );
     }
 
-    // ✅ Use modern delete method
     await User.findByIdAndDelete(id);
 
     res.json({ message: 'User deleted successfully' });
@@ -214,9 +205,44 @@ router.delete('/admin/users/:id', protect, restrictTo(['admin']), async (req, re
 });
 
 
+// ADMIN: Reset user password
+router.patch('/admin/users/:id/password', protect, restrictTo(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { newPassword } = req.body;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: 'Invalid user id' });
+      }
+
+      if (!newPassword || newPassword.length < 4) {
+        return res
+          .status(400)
+          .json({ message: 'Password must be at least 4 characters.' });
+      }
+
+      const user = await User.findById(id);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      user.password = newPassword;
+
+      await user.save();
+
+      return res.json({ message: 'Password updated successfully.' });
+    } catch (err) {
+      console.error('[Admin change password] error:', err);
+      return res
+        .status(500)
+        .json({ message: 'Server error updating password' });
+    }
+  }
+);
 
 
-// ---------- ADMIN: Update faculty permissions ----------
+
+// ADMIN: Update faculty permissions 
 router.patch('/admin/faculty/:id/permissions', protect, restrictTo(['admin']), async (req, res) => {
   const { canEditScores } = req.body;
   try {
@@ -232,13 +258,14 @@ router.patch('/admin/faculty/:id/permissions', protect, restrictTo(['admin']), a
   }
 });
 
-// ---------- ADMIN: Analytics (simple live metrics) ----------
+
+
+// ADMIN: Analytics (simple live metrics)
 router.get('/admin/analytics', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
     const totalTests = await TestSet.countDocuments();
     const totalSubmissions = await Submission.countDocuments();
-    // Example additional metric: average band across all submissions with band > 0
     const agg = await Submission.aggregate([
       { $match: { bandScore: { $gt: 0 } } },
       { $group: { _id: null, avgBand: { $avg: '$bandScore' } } }
@@ -250,7 +277,6 @@ router.get('/admin/analytics', protect, restrictTo(['admin']), async (req, res) 
       totalTests,
       totalSubmissions,
       avgOverallBandScore: avgOverallBandScore || 6.5,
-      completionRate: '78%', // keep mocked for now
       message: 'Comprehensive analytics dashboard data.'
     });
   } catch (error) {
@@ -259,7 +285,9 @@ router.get('/admin/analytics', protect, restrictTo(['admin']), async (req, res) 
   }
 });
 
-// ---------- Student submission status endpoint (helpful for async processing) ----------
+
+
+// Student submission status endpoint 
 router.get('/student/submission/:id/status', protect, restrictTo(['student']), async (req, res) => {
   const id = req.params.id;
   try {
@@ -274,7 +302,9 @@ router.get('/student/submission/:id/status', protect, restrictTo(['student']), a
   }
 });
 
-// Admin or faculty with permission might want to re-run scoring (useful for debugging).
+
+
+// Admin or faculty with permission might want to re-run scoring 
 router.post('/admin/submission/:id/reprocess', protect, restrictTo(['admin','faculty']), async (req, res) => {
   const id = req.params.id;
   try {
@@ -297,5 +327,7 @@ router.post('/admin/submission/:id/reprocess', protect, restrictTo(['admin','fac
     return res.status(500).json({ message: 'Error queuing reprocess', details: error.message });
   }
 });
+
+
 
 module.exports = router;

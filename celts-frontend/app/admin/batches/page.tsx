@@ -2,9 +2,9 @@
 
 
 import { useEffect, useState } from "react";
-import { BatchManagement} from "@/components/admin/batch-management";
+import { BatchManagement} from "@/components/admin/BatchManagement";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { navItems } from "@/components/admin/nav-items";
+import { navItems } from "@/components/admin/NavItems";
 
 
 export default function BatchManage() {

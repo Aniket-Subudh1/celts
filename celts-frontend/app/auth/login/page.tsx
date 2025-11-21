@@ -65,60 +65,60 @@ export default function LoginPage() {
       </div>
 
 
-      {/* Right side - login section */ }
-  <div className="flex flex-col w-full md:w-[40%] items-center justify-center bg-white px-10 py-12">
-    <div className="mb-8 flex flex-col items-center">
-      <Image
-        src="/cutm_logo.png"
-        alt="CELTS Logo"
-        width={180}
-        height={180}
-        className="mb-8"
-      />
-      {/* <h2 className="text-3xl font-semibold text-gray-800">CELTS Login</h2> */}
-      <h6 className="text-2xl font-semibold text-gray-800">Centurion English Language Testing System</h6>
-
-    </div>
-
-    {/* Login card */}
-    <Card className="w-full max-w-lg p-10 shadow-lg space-y-6">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <Label htmlFor="email" className="text-base font-medium">Email</Label>
-          <Input
-            id="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="h-12 text-base"
+      {/* Right side - login section */}
+      <div className="flex flex-col w-full md:w-[40%] items-center justify-center bg-white px-10 py-12">
+        <div className="mb-8 flex flex-col items-center">
+          <Image
+            src="/cutm_logo.png"
+            alt="CELTS Logo"
+            width={180}
+            height={180}
+            className="mb-8"
           />
+          {/* <h2 className="text-3xl font-semibold text-gray-800">CELTS Login</h2> */}
+          <h6 className="text-2xl font-semibold text-gray-800">Centurion English Language Testing System</h6>
+
         </div>
 
-        <div>
-          <Label htmlFor="password" className="text-base font-medium">Password</Label>
-          <Input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Your password"
-            className="h-12 text-base"
-          />
-        </div>
+        {/* Login card */}
+        <Card className="w-full max-w-lg p-10 shadow-lg space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <Label htmlFor="email" className="text-base font-medium">Email</Label>
+              <Input
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="h-12 text-base"
+              />
+            </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+            <div>
+              <Label htmlFor="password" className="text-base font-medium">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Your password"
+                className="h-12 text-base"
+              />
+            </div>
 
-        <Button type="submit" className="w-full h-12 text-base font-semibold" disabled={isLoading}>
-          {isLoading ? "Signing in..." : "Sign In"}
-        </Button>
-      </form>
-    </Card>
+            {error && <p className="text-sm text-red-600">{error}</p>}
 
-    {/* Footer */}
-    <footer className="mt-10 text-sm text-gray-500 text-center">
-      Made with ❤️ by <span className="font-medium text-gray-700">GT Tech Pvt. Ltd.</span>
-    </footer>
-  </div>
+            <Button type="submit" className="w-full h-12 text-base font-semibold" disabled={isLoading}>
+              {isLoading ? "Signing in..." : "Sign In"}
+            </Button>
+          </form>
+        </Card>
+
+        {/* Footer */}
+        <footer className="mt-10 text-sm text-gray-500 text-center">
+          Made with ❤️ by <span className="font-medium text-gray-700">GT Tech Pvt. Ltd.</span>
+        </footer>
+      </div>
     </div >
   )
 }

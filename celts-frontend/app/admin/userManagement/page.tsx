@@ -1,8 +1,8 @@
 "use client"
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { UserManagement } from "@/components/admin/user-management"
-import { navItems } from "@/components/admin/nav-items"
+import { UserManagement } from "@/components/admin/UserManagement"
+import { navItems } from "@/components/admin/NavItems"
 import { useState, useEffect } from "react"
 
 export default function UserManage() {

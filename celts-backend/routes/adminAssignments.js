@@ -5,13 +5,14 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
 
-// helper
 function removeStudentIdFromArray(arr, studentId) {
   if (!Array.isArray(arr)) return [];
   return arr.filter(id => id.toString() !== studentId.toString());
 }
 
-function isValidId(id) { return mongoose.Types.ObjectId.isValid(id); }
+function isValidId(id) { 
+  return mongoose.Types.ObjectId.isValid(id); 
+}
 
 router.post('/faculty-batch', protect, restrictTo(['admin']), async (req, res) => {
   const { facultyId, cohort } = req.body;

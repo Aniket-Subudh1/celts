@@ -4,15 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import TestCreateForm from "@/components/faculty/TestCreateForm";
-import { BarChart3, FileText, Users, Settings } from "lucide-react";
-
-const navItems = [
-    { href: "/faculty/dashboard", label: "Dashboard", icon: <BarChart3 className="w-5 h-5" /> },
-    { href: "/faculty/create_test", label: "Create Test", icon: <FileText className="w-5 h-5" /> },
-    { href: "/faculty/view_test", label: "View Test", icon: <FileText className="w-5 h-5" /> },
-    { href: "/faculty/students", label: "Students", icon: <Users className="w-5 h-5" /> },
-    { href: "/faculty/scores", label: "Score Management", icon: <Settings className="w-5 h-5" /> },
-];
+import { navItems } from "@/components/faculty/NavItems";
 
 export default function TestManagementPage() {
     const [userName, setUserName] = useState<string>("")
@@ -33,7 +25,7 @@ export default function TestManagementPage() {
             <div className="space-y-6">
                 <div>
                     <h1 className="text-3xl font-bold mb-2">Create Test</h1>
-                    <p className="text-muted-foreground">Add Reading or Listening tests for your students.</p>
+                    <p className="text-muted-foreground">Develop Comprehensive English Skill Tests</p>
                 </div>
 
                 <div className="bg-white p-6 rounded shadow-sm">
