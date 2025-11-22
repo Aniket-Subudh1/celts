@@ -1,4 +1,3 @@
-// models/TestSet.js
 const mongoose = require('mongoose');
 
 const OptionSchema = new mongoose.Schema(
@@ -90,6 +89,10 @@ const TestSetSchema = new mongoose.Schema(
     questions: { type: [QuestionSchema], default: [] },
 
     timeLimitMinutes: { type: Number, default: 0 },
+
+    // scheduling
+    startTime: { type: Date, default: null },
+    endTime: { type: Date, default: null },
 
     // target audience / assignment
     assignedBatches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Batch' }],

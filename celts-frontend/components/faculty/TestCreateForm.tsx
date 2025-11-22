@@ -54,6 +54,8 @@ export default function TestCreateForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(0);
+  const [startTime, setStartTime] = useState<string>("");
+  const [endTime, setEndTime] = useState<string>("");
 
   const [readingBlocks, setReadingBlocks] = useState<ReadingBlock[]>([]);
   const [listeningBlocks, setListeningBlocks] = useState<ListeningBlock[]>([]);
@@ -81,6 +83,8 @@ export default function TestCreateForm() {
     setTitle("");
     setDescription("");
     setTimeLimitMinutes(0);
+    setStartTime("");
+    setEndTime("");
     setReadingBlocks([]);
     setListeningBlocks([]);
     setListeningFiles({});
@@ -391,6 +395,8 @@ export default function TestCreateForm() {
       description,
       type,
       timeLimitMinutes,
+      startTime: startTime ? new Date(startTime).toISOString() : null,
+      endTime: endTime ? new Date(endTime).toISOString() : null,
       published: false
     };
 
@@ -699,6 +705,26 @@ export default function TestCreateForm() {
                 <div className="md:col-span-1">
                   <label className="text-xs text-slate-700 block mb-2">Time limit (minutes)</label>
                   <Input type="number" value={timeLimitMinutes} onChange={e => setTimeLimitMinutes(Number(e.target.value || 0))} />
+                </div>
+
+                {/* START TIME */}
+                <div className="md:col-span-1">
+                  <label className="text-xs text-slate-700 block mb-2">Start Time (optional)</label>
+                  <Input 
+                    type="datetime-local" 
+                    value={startTime} 
+                    onChange={e => setStartTime(e.target.value)} 
+                  />
+                </div>
+
+                {/* END TIME */}
+                <div className="md:col-span-1">
+                  <label className="text-xs text-slate-700 block mb-2">End Time (optional)</label>
+                  <Input 
+                    type="datetime-local" 
+                    value={endTime} 
+                    onChange={e => setEndTime(e.target.value)} 
+                  />
                 </div>
 
                 {/* DESCRIPTION */}

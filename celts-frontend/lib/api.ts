@@ -1,7 +1,11 @@
-// lib/api.ts
 export type ApiResponse<T> = { ok: boolean; status: number | null; data?: T; error?: any };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+
+// Log API base for debugging
+if (typeof window !== 'undefined') {
+  console.log('API Base URL:', API_BASE);
+}
 
 async function request(path: string, options: RequestInit = {}): Promise<ApiResponse<any>> {
   try {
@@ -48,10 +52,7 @@ export async function apiPatch(path: string, body: any) {
 }
 
 
-/**
- * Upload helper: expects `form` to be FormData and does NOT set JSON Content-Type.
- * Returns ApiResponse with data from the server.
- */
+
 export async function apiUpload(path: string, form: FormData) {
   try {
     const token = (typeof window !== 'undefined') ? localStorage.getItem('celts_token') : null;

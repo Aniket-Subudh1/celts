@@ -1,4 +1,3 @@
-// models/Submission.js
 const mongoose = require('mongoose');
 
 const SubmissionSchema = new mongoose.Schema({

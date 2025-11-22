@@ -7,7 +7,31 @@ const { protect, restrictTo } = require('../middleware/authMiddleware');
 
 // Student posts proctoring events
 router.post('/log', protect, restrictTo(['student']), [
-  body('eventType').isIn(['webcam_snapshot','tab_switch','warning','face_missing','screen_share','proctor_note']),
+  body('eventType').isIn([
+    'webcam_snapshot',
+    'tab_switch',
+    'warning',
+    'face_missing',
+    'screen_share',
+    'proctor_note',
+    'window_blur',
+    'fullscreen_exit',
+    'multiple_monitors',
+    'mouse_leave_top',
+    'dev_tools_open',
+    'clipboard',
+    'context_menu',
+    'dev_tools',
+    'new_tab',
+    'new_window',
+    'incognito',
+    'close_tab',
+    'window_switch',
+    'refresh',
+    'print',
+    'save',
+    'auto_submit'
+  ]),
   body('testSet').optional().isMongoId()
 ], async (req, res) => {
   const errs = validationResult(req); if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });

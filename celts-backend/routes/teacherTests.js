@@ -72,6 +72,8 @@ router.post('/', protect, restrictTo(['faculty']), async (req, res) => {
       questions: payload.questions,
 
       timeLimitMinutes: Number(payload.timeLimitMinutes || 0),
+      startTime: payload.startTime ? new Date(payload.startTime) : null,
+      endTime: payload.endTime ? new Date(payload.endTime) : null,
       assignedBatches: Array.isArray(payload.assignedBatches)
         ? payload.assignedBatches
         : [],
