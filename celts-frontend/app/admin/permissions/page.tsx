@@ -64,7 +64,6 @@ export default function PermissionsPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load logged-in admin name
   useEffect(() => {
     const storedUser = localStorage.getItem("celts_user");
     if (storedUser) {
@@ -77,7 +76,6 @@ export default function PermissionsPage() {
     }
   }, []);
 
-  // Fetch faculty list + permissions
   async function fetchFaculty() {
     setLoadingFaculty(true);
     setError(null);
@@ -145,44 +143,82 @@ export default function PermissionsPage() {
   }
 
   return (
-    <DashboardLayout navItems={navItems} sidebarHeader="CELTS Admin" userName={userName}
+    <DashboardLayout
+      navItems={navItems}
+      sidebarHeader="CELTS Admin"
+      userName={userName}
     >
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Role Permissions</h1>
-          <p className="text-muted-foreground">
-            View the default capabilities for each role and control whether
-            faculty can edit student band scores.
-          </p>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-medium text-slate-900">
+              Role permissions
+            </h1>
+            <p className="mt-1 text-sm text-slate-500 max-w-xl">
+              Default capabilities per role and the per-faculty toggle to allow
+              editing of student band scores. Changes are applied immediately.
+            </p>
+          </div>
+
+          <div className="ml-auto flex items-center gap-3">
+            <button
+              onClick={fetchFaculty}
+              disabled={loadingFaculty}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 shadow-sm hover:shadow"
+            >
+              {loadingFaculty ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Refreshing
+                </>
+              ) : (
+                "Refresh"
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Static role matrix (documentation) */}
+        {/* Permission matrix - documentation style */}
         <Card className="p-6">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="px-4 py-3 text-left text-sm font-semibold">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">
+                Role capability matrix
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                What each role may or may not do in the system.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-x-auto rounded-md border border-slate-100">
+            <table className="w-full min-w-[640px] table-auto">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-600">
                     Permission
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold">
+                  <th className="px-4 py-3 text-center text-xs font-medium text-slate-600">
                     Admin
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold">
+                  <th className="px-4 py-3 text-center text-xs font-medium text-slate-600">
                     Faculty
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold">
+                  <th className="px-4 py-3 text-center text-xs font-medium text-slate-600">
                     Student
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {staticPermissions.map((perm) => (
+                {staticPermissions.map((perm, idx) => (
                   <tr
                     key={perm.key}
-                    className="border-b border-border hover:bg-muted/30"
+                    className={
+                      idx % 2 === 0 ? "bg-white" : "bg-slate-50"
+                    }
                   >
-                    <td className="px-4 py-3 text-sm font-medium">
+                    <td className="px-4 py-3 text-sm text-slate-800 font-medium">
                       {perm.name}
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -200,112 +236,111 @@ export default function PermissionsPage() {
             </table>
           </div>
 
-          <div className="mt-6 p-4 bg-muted rounded-lg">
-            <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-              <Lock className="w-4 h-4" /> Permission Notes
-            </h3>
-            <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Admin: Full system access and user management</li>
-              <li>• Faculty: Can create tests, grade submissions, and (optionally) edit scores</li>
-              <li>• Student: Can take tests and view personal results</li>
-            </ul>
+          <div className="mt-6 rounded-md bg-slate-50 p-4">
+            <div className="flex items-start gap-3">
+              <Lock className="w-5 h-5 text-slate-500" />
+              <div>
+                <p className="text-sm font-medium text-slate-800">
+                  Permission notes
+                </p>
+                <p className="text-sm text-slate-500 mt-1"> Admin: Admins have system-wide access. </p>
+                <p className="text-sm text-slate-500 mt-1">Faculty: Faculty can create and modify test grades; enabling the toggle below allows them to also edit
+                  student band scores when granted.</p>
+                <p className="text-sm text-slate-500 mt-1">Student: Student can only View the test assigned to them , attempt it and then see the scores.</p>
+              </div>
+            </div>
           </div>
         </Card>
 
-        {/* Dynamic: Faculty score-edit permission */}
-        <Card className="p-6 space-y-4">
-          <div className="flex items-center justify-between gap-2 mb-2">
+        {/* Faculty permissions (interactive) */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">
-                Faculty Score Editing Permission
+              <h2 className="text-sm font-medium text-slate-800">
+                Faculty score editing
               </h2>
-              <p className="text-sm text-muted-foreground">
-                Allow or revoke the ability for each faculty member to edit
-                student band scores.
+              <p className="mt-1 text-xs text-slate-500">
+                Toggle per-faculty permission to allow manual editing of band
+                scores.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={fetchFaculty}
-              className="inline-flex items-center text-xs px-3 py-1.5 rounded-md border bg-background hover:bg-muted"
-              disabled={loadingFaculty}
-            >
-              {loadingFaculty && (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              )}
-              Refresh
-            </button>
           </div>
 
           {error && (
-            <p className="text-xs text-red-600 mb-1">{error}</p>
+            <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </div>
           )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="px-3 py-2 text-left font-semibold">
+          <div className="mt-5 overflow-x-auto rounded-md border border-slate-100">
+            <table className="w-full min-w-[720px]">
+              <thead className="bg-white sticky top-0">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
                     Faculty
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
                     Email
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">
                     Employee ID
                   </th>
-                  <th className="px-3 py-2 text-center font-semibold">
-                    Can Edit Band Scores
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500">
+                    Can edit band scores
                   </th>
                 </tr>
               </thead>
+
               <tbody>
-                {facultyList.length === 0 && !loadingFaculty && (
+                {facultyList.length === 0 && !loadingFaculty ? (
                   <tr>
                     <td
                       colSpan={4}
-                      className="px-3 py-4 text-center text-xs text-muted-foreground"
+                      className="px-4 py-6 text-center text-sm text-slate-500"
                     >
                       No faculty users found.
                     </td>
                   </tr>
-                )}
+                ) : null}
 
-                {facultyList.map((fac) => {
+                {facultyList.map((fac, idx) => {
                   const canEdit =
                     fac.facultyPermissions?.canEditScores === true;
                   const isSaving = savingId === fac._id;
-
                   return (
                     <tr
                       key={fac._id}
-                      className="border-b border-border hover:bg-muted/40"
+                      className={
+                        idx % 2 === 0 ? "bg-white" : "bg-slate-50"
+                      }
                     >
-                      <td className="px-3 py-2">
-                        <div className="font-medium">
+                      <td className="px-4 py-4 align-top">
+                        <div className="text-sm font-medium text-slate-800">
                           {fac.name || "Unnamed Faculty"}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {fac.email}
+
+                      <td className="px-4 py-4 align-top">
+                        <div className="text-sm text-slate-600">{fac.email}</div>
                       </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {fac.systemId || "-"}
+
+                      <td className="px-4 py-4 align-top">
+                        <div className="text-sm text-slate-600">
+                          {fac.systemId || "-"}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-center">
-                        <div className="inline-flex items-center gap-2">
+
+                      <td className="px-4 py-4 align-top text-center">
+                        <div className="inline-flex items-center gap-3">
                           <Checkbox
                             checked={canEdit}
                             disabled={isSaving}
                             onCheckedChange={(val) =>
-                              handleToggleEditScores(
-                                fac._id,
-                                Boolean(val)
-                              )
+                              handleToggleEditScores(fac._id, Boolean(val))
                             }
                           />
                           {isSaving && (
-                            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                            <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                           )}
                         </div>
                       </td>
@@ -315,12 +350,11 @@ export default function PermissionsPage() {
 
                 {loadingFaculty && (
                   <tr>
-                    <td
-                      colSpan={4}
-                      className="px-3 py-4 text-center text-xs text-muted-foreground"
-                    >
-                      <Loader2 className="w-4 h-4 mr-2 inline-block animate-spin" />
-                      Loading faculty...
+                    <td colSpan={4} className="px-4 py-6 text-center">
+                      <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading faculty...
+                      </div>
                     </td>
                   </tr>
                 )}

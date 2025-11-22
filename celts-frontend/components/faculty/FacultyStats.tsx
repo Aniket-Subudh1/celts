@@ -9,7 +9,6 @@ import {
   Users,
   Layers,
   AlertCircle,
-  RefreshCcw,
   Search,
 } from "lucide-react";
 import api from "@/lib/api";
@@ -45,8 +44,7 @@ interface BatchStats {
 }
 
 interface StudentStatsRow {
-  _id: string;
-  studentId?: string;
+  _id: string;   studentId?: string;
   name: string;
   email: string;
   systemId: string;
@@ -65,7 +63,14 @@ interface FacultyStatsResponse {
   students?: StudentStatsRow[];
 }
 
-// ---- Helpers ----
+interface CeltsUser {
+  name?: string;
+  role?: string;
+  facultyPermissions?: {
+    canEditScores?: boolean;
+  };
+}
+
 function formatBand(b: NullableNumber): string {
   if (b === null || b === undefined || Number.isNaN(b)) return "—";
   const num = Number(b);
@@ -104,7 +109,28 @@ export function FacultyStats() {
   const [selectedBatchId, setSelectedBatchId] = useState<string | "all">("all");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // ---- Fetch stats ----
+  const [canEditScores, setCanEditScores] = useState(false);
+
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [editingSkill, setEditingSkill] = useState<"writing" | "speaking" | null>(null);
+  const [overrideValue, setOverrideValue] = useState<string>("");
+  const [overrideReason, setOverrideReason] = useState<string>("");
+  const [savingOverride, setSavingOverride] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("celts_user");
+    if (stored) {
+      try {
+        const parsed: CeltsUser = JSON.parse(stored);
+        setCanEditScores(!!parsed.facultyPermissions?.canEditScores);
+      } catch (e) {
+        console.error("[FacultyStats] Failed to parse celts_user:", e);
+      }
+    }
+  }, []);
+
   async function fetchStats() {
     setLoading(true);
     setError(null);
@@ -141,9 +167,9 @@ export function FacultyStats() {
 
   useEffect(() => {
     fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- Filter students by batch + search ----
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
       if (selectedBatchId !== "all") {
@@ -163,6 +189,69 @@ export function FacultyStats() {
     });
   }, [students, batches, selectedBatchId, searchTerm]);
 
+  function startOverride(student: StudentStatsRow, skill: "writing" | "speaking") {
+    setOverrideError(null);
+    setEditingStudentId(student._id);
+    setEditingSkill(skill);
+
+    const current =
+      skill === "writing" ? student.writingBand : student.speakingBand;
+
+    setOverrideValue(
+      current === null || current === undefined || Number.isNaN(current)
+        ? ""
+        : String(current)
+    );
+    setOverrideReason("");
+  }
+
+  function cancelOverride() {
+    setEditingStudentId(null);
+    setEditingSkill(null);
+    setOverrideValue("");
+    setOverrideReason("");
+    setOverrideError(null);
+  }
+
+  async function submitOverride() {
+    if (!editingStudentId || !editingSkill) return;
+
+    setSavingOverride(true);
+    setOverrideError(null);
+
+    const val = parseFloat(overrideValue);
+    if (Number.isNaN(val)) {
+      setOverrideError("Please enter a valid band score between 0 and 9.");
+      setSavingOverride(false);
+      return;
+    }
+
+    try {
+      const res = await api.apiPatch(
+        `/faculty/students/${editingStudentId}/override-band`,
+        {
+          skill: editingSkill,
+          newBandScore: val,
+          reason: overrideReason,
+        }
+      );
+
+      if (!res.ok) {
+        setOverrideError(
+          res.error?.message || "Failed to update band score."
+        );
+      } else {
+        // Re-fetch stats to reflect fresh bands & overall
+        await fetchStats();
+        cancelOverride();
+      }
+    } catch (err: any) {
+      setOverrideError(err?.message || "Network error");
+    } finally {
+      setSavingOverride(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -175,15 +264,6 @@ export function FacultyStats() {
             View IELTS band performance, batch coverage, and student attempts.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchStats}
-          disabled={loading}
-        >
-          <RefreshCcw className="w-4 h-4 mr-1" />
-          {loading ? "Refreshing..." : "Refresh"}
-        </Button>
       </div>
 
       {/* Error */}
@@ -222,8 +302,10 @@ export function FacultyStats() {
               Coverage:{" "}
               {summary.totalStudentsInBatches
                 ? Math.round(
-                  ((summary.totalStudentsWithAnyTest || 0) * 100) / summary.totalStudentsInBatches
-                ) : 0}
+                    ((summary.totalStudentsWithAnyTest || 0) * 100) /
+                      summary.totalStudentsInBatches
+                  )
+                : 0}
               %
             </p>
           </div>
@@ -255,16 +337,32 @@ export function FacultyStats() {
             Per-skill Averages
           </p>
           <div className="flex flex-wrap gap-2 mt-1">
-            <span className={`px-2 py-0.5 rounded-full ${bandBadgeClass(summary.readingAvg)}`} >
+            <span
+              className={`px-2 py-0.5 rounded-full ${bandBadgeClass(
+                summary.readingAvg
+              )}`}
+            >
               R: {formatBand(summary.readingAvg)}
             </span>
-            <span className={`px-2 py-0.5 rounded-full ${bandBadgeClass(summary.listeningAvg)}`} >
+            <span
+              className={`px-2 py-0.5 rounded-full ${bandBadgeClass(
+                summary.listeningAvg
+              )}`}
+            >
               L: {formatBand(summary.listeningAvg)}
             </span>
-            <span className={`px-2 py-0.5 rounded-full ${bandBadgeClass(summary.writingAvg)}`} >
+            <span
+              className={`px-2 py-0.5 rounded-full ${bandBadgeClass(
+                summary.writingAvg
+              )}`}
+            >
               W: {formatBand(summary.writingAvg)}
             </span>
-            <span className={`px-2 py-0.5 rounded-full ${bandBadgeClass(summary.speakingAvg)}`} >
+            <span
+              className={`px-2 py-0.5 rounded-full ${bandBadgeClass(
+                summary.speakingAvg
+              )}`}
+            >
               S: {formatBand(summary.speakingAvg)}
             </span>
           </div>
@@ -337,9 +435,9 @@ export function FacultyStats() {
                       <div className="text-[11px] text-muted-foreground">
                         {b.totalStudentsInBatch
                           ? Math.round(
-                            ((b.studentsWithAnyTest || 0) * 100) /
-                            b.totalStudentsInBatch
-                          )
+                              ((b.studentsWithAnyTest || 0) * 100) /
+                                b.totalStudentsInBatch
+                            )
                           : 0}
                         % coverage
                       </div>
@@ -417,6 +515,13 @@ export function FacultyStats() {
             <p className="text-xs text-muted-foreground">
               Filter by batch and search by name / ID / email.
             </p>
+            {canEditScores && (
+              <p className="text-[11px] text-emerald-700 mt-1">
+                You can edit <strong>Writing</strong> and{" "}
+                <strong>Speaking</strong> bands. Overall band is calculated
+                automatically.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col md:flex-row gap-2 md:items-center">
@@ -449,6 +554,10 @@ export function FacultyStats() {
           </div>
         </div>
 
+        {overrideError && (
+          <p className="text-xs text-red-600">{overrideError}</p>
+        )}
+
         <div className="overflow-x-auto">
           {filteredStudents.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4">
@@ -474,7 +583,7 @@ export function FacultyStats() {
                 {filteredStudents.map((s) => (
                   <tr
                     key={s._id}
-                    className="border-b last:border-0 hover:bg-muted/40"
+                    className="border-b last:border-0 hover:bg-muted/40 align-top"
                   >
                     <td className="px-3 py-2">
                       <div className="font-medium">{s.name}</div>
@@ -486,6 +595,7 @@ export function FacultyStats() {
                       {s.batchName || "—"}
                     </td>
                     <td className="px-3 py-2 text-xs">{s.systemId}</td>
+                    {/* Overall: read-only */}
                     <td className="px-3 py-2">
                       <span
                         className={`px-2 py-0.5 rounded-full text-xs font-semibold ${bandBadgeClass(
@@ -495,17 +605,131 @@ export function FacultyStats() {
                         {formatBand(s.overallBand)}
                       </span>
                     </td>
+                    {/* Reading: read-only */}
                     <td className="px-3 py-2 text-xs">
                       {formatBand(s.readingBand)}
                     </td>
+                    {/* Listening: read-only */}
                     <td className="px-3 py-2 text-xs">
                       {formatBand(s.listeningBand)}
                     </td>
-                    <td className="px-3 py-2 text-xs">
-                      {formatBand(s.writingBand)}
+                    {/* Writing: editable if canEditScores */}
+                    <td className="px-3 py-2 text-xs align-top">
+                      <div className="flex flex-col gap-1">
+                        <span>{formatBand(s.writingBand)}</span>
+                        {canEditScores && (
+                          <>
+                            {editingStudentId === s._id &&
+                            editingSkill === "writing" ? (
+                              <div className="flex flex-col gap-1">
+                                <Input
+                                  className="h-7 text-xs"
+                                  placeholder="0–9"
+                                  value={overrideValue}
+                                  onChange={(e) =>
+                                    setOverrideValue(e.target.value)
+                                  }
+                                />
+                                <Input
+                                  className="h-7 text-xs"
+                                  placeholder="Reason (optional)"
+                                  value={overrideReason}
+                                  onChange={(e) =>
+                                    setOverrideReason(e.target.value)
+                                  }
+                                />
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    className="h-7 px-2 text-[11px]"
+                                    onClick={submitOverride}
+                                    disabled={savingOverride}
+                                  >
+                                    {savingOverride ? "Saving..." : "Save"}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-[11px]"
+                                    onClick={cancelOverride}
+                                    disabled={savingOverride}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={() => startOverride(s, "writing")}
+                              >
+                                Edit
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-3 py-2 text-xs">
-                      {formatBand(s.speakingBand)}
+                    {/* Speaking: editable if canEditScores */}
+                    <td className="px-3 py-2 text-xs align-top">
+                      <div className="flex flex-col gap-1">
+                        <span>{formatBand(s.speakingBand)}</span>
+                        {canEditScores && (
+                          <>
+                            {editingStudentId === s._id &&
+                            editingSkill === "speaking" ? (
+                              <div className="flex flex-col gap-1">
+                                <Input
+                                  className="h-7 text-xs"
+                                  placeholder="0–9"
+                                  value={overrideValue}
+                                  onChange={(e) =>
+                                    setOverrideValue(e.target.value)
+                                  }
+                                />
+                                <Input
+                                  className="h-7 text-xs"
+                                  placeholder="Reason (optional)"
+                                  value={overrideReason}
+                                  onChange={(e) =>
+                                    setOverrideReason(e.target.value)
+                                  }
+                                />
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    className="h-7 px-2 text-[11px]"
+                                    onClick={submitOverride}
+                                    disabled={savingOverride}
+                                  >
+                                    {savingOverride ? "Saving..." : "Save"}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-[11px]"
+                                    onClick={cancelOverride}
+                                    disabled={savingOverride}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={() => startOverride(s, "speaking")}
+                              >
+                                Edit
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

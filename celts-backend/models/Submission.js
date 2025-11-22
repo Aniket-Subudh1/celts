@@ -48,6 +48,16 @@ const SubmissionSchema = new mongoose.Schema({
 
   bandScore: { type: Number, default: null },
 
+  originalBandScore: { type: Number, default: null }, // AI band or first band before override
+    overrideReason: { type: String, default: "" },
+    overriddenBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    isOverridden: { type: Boolean, default: false },
+    overriddenAt: { type: Date, default: null },
+
   // Gemini fields
   geminiEvaluation: {
     type: mongoose.Schema.Types.Mixed,

@@ -19,6 +19,8 @@ const facultyRoutes = require('./faculty');
 const studentRoutes = require('./student');
 const teacherTestsRoutes = require('./teacherTests');
 const studentStatsRoutes = require('./studentStats');
+const adminAuditRoutes = require("./adminAudit");
+
 
 // Root health check
 router.get('/', (req, res) => res.json({ message: 'CELTS Backend running successfully!', timestamp: Date.now() }));
@@ -35,6 +37,7 @@ router.use('/admin/batches', adminBatchRoutes);
 router.use('/teacher/tests', teacherTestsRoutes);
 router.use('/student', studentStatsRoutes);
 router.use('/studentStats', studentStatsRoutes);
+router.use("/admin", adminAuditRoutes);
 
 
 

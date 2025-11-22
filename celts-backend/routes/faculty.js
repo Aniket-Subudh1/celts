@@ -1,12 +1,13 @@
 // routes/faculty.js
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
+const { body, validationResult } = require('express-validator');
 
 const Batch = require('../models/Batch');
 const Submission = require('../models/Submission');
 const AuditLog = require('../models/AuditLog');
-const { body, validationResult } = require('express-validator');
 const StudentStats = require('../models/StudentStats');
 const User = require('../models/User');
 
@@ -339,37 +340,344 @@ router.get('/submissions/:testId', protect, restrictTo(['faculty']), async (req,
 });
 
 
-// Faculty override (if faculty has permission)
-router.patch('/submissions/:id/override', protect, restrictTo(['faculty']), [
-  body('newBandScore').isNumeric(),
-  body('reason').optional().isString()
-], async (req, res) => {
-  const errors = validationResult(req); if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  try {
-    const submission = await Submission.findById(req.params.id);
-    if (!submission) return res.status(404).json({ message: 'Submission not found' });
-    if (!req.user.facultyPermissions || !req.user.facultyPermissions.canEditScores) return res.status(403).json({ message: 'Not allowed to override scores' });
-    const old = submission.bandScore;
-    submission.originalBandScore = old;
-    submission.bandScore = req.body.newBandScore;
-    submission.overrideReason = req.body.reason || '';
-    submission.overriddenBy = req.user._id;
-    submission.isOverridden = true;
-    await submission.save();
+// PATCH /api/faculty/students/:statsId/override-band
+// Faculty can override WRITING or SPEAKING band for a student
+router.patch('/students/:statsId/override-band', protect, restrictTo(['faculty', 'admin']),
+  [
+    body('skill')
+      .isString()
+      .withMessage('skill is required')
+      .custom((value) => ['writing', 'speaking'].includes(value))
+      .withMessage('skill must be either "writing" or "speaking"'),
+    body('newBandScore')
+      .isFloat({ min: 0, max: 9 })
+      .withMessage('newBandScore must be between 0 and 9'),
+    body('reason')
+      .optional()
+      .isString()
+      .isLength({ max: 500 })
+      .withMessage('reason must be a string up to 500 chars'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-    // Create audit log
-    await AuditLog.create({
-      action: 'score_override',
-      targetType: 'Submission',
-      targetId: submission._id,
-      changedBy: req.user._id,
-      oldValue: { bandScore: old },
-      newValue: { bandScore: submission.bandScore },
-      reason: req.body.reason || ''
-    });
+    const { statsId } = req.params;
+    const { skill, newBandScore, reason } = req.body;
 
-    return res.json({ message: 'Score overridden', submission });
-  } catch (err) { return res.status(500).json({ message: err.message }); }
-});
+    if (!mongoose.Types.ObjectId.isValid(statsId)) {
+      return res.status(400).json({ message: 'Invalid StudentStats id' });
+    }
+
+    try {
+      const stats = await StudentStats.findById(statsId).populate('student');
+      if (!stats) {
+        return res.status(404).json({ message: 'Student stats not found' });
+      }
+
+      // If faculty, must have permission flag
+      if (
+        req.user.role === 'faculty' &&
+        (!req.user.facultyPermissions ||
+          req.user.facultyPermissions.canEditScores !== true)
+      ) {
+        return res
+          .status(403)
+          .json({ message: 'Not allowed to override scores' });
+      }
+
+      // skill is "writing" or "speaking"
+      const bandField =
+        skill === 'writing' ? 'writingBand' : 'speakingBand';
+
+      const oldBand = stats[bandField];
+      const newBand = Number(newBandScore);
+
+      // Update StudentStats for that skill
+      stats[bandField] = newBand;
+
+      // Recompute overallBand (same logic as in gradingWorker)
+      const values = [
+        stats.readingBand,
+        stats.listeningBand,
+        stats.writingBand,
+        stats.speakingBand,
+      ].filter((v) => typeof v === 'number' && v > 0);
+
+      stats.overallBand = values.length
+        ? Math.round(
+          (values.reduce((a, b) => a + b, 0) / values.length) * 2
+        ) / 2
+        : null;
+
+      // optional flag
+      stats.hasManualOverride = true;
+
+      await stats.save();
+
+      // Find latest submission for that student & skill
+      const studentId = stats.student._id;
+      const latestSubmission = await Submission.findOne({
+        student: studentId,
+        skill,
+      }).sort({ createdAt: -1 });
+
+      let submissionInfo = null;
+      if (latestSubmission) {
+        const oldSubmissionBand = latestSubmission.bandScore;
+
+        // preserve original band if not set yet
+        if (
+          typeof latestSubmission.originalBandScore !== 'number' ||
+          latestSubmission.originalBandScore === null
+        ) {
+          latestSubmission.originalBandScore = oldSubmissionBand;
+        }
+
+        latestSubmission.bandScore = newBand;
+        latestSubmission.isOverridden = true;
+        latestSubmission.overriddenBy = req.user._id;
+        latestSubmission.overrideReason = reason || '';
+
+        await latestSubmission.save();
+
+        submissionInfo = {
+          submissionId: latestSubmission._id,
+          oldBandScore: oldSubmissionBand,
+          newBandScore: latestSubmission.bandScore,
+        };
+
+        // Audit log for submission override
+        await AuditLog.create({
+          action: 'score_override',
+          targetType: 'Submission',
+          targetId: latestSubmission._id,
+          changedBy: req.user._id,
+          oldValue: {
+            skill,
+            bandScore: oldSubmissionBand,
+          },
+          newValue: {
+            skill,
+            bandScore: latestSubmission.bandScore,
+          },
+          reason: reason || '',
+        });
+      }
+
+      // Audit log for stats change (even if submission is missing)
+      await AuditLog.create({
+        action: 'student_stats_override',
+        targetType: 'StudentStats',
+        targetId: stats._id,
+        changedBy: req.user._id,
+        oldValue: {
+          skill,
+          band: oldBand,
+        },
+        newValue: {
+          skill,
+          band: newBand,
+          overallBand: stats.overallBand,
+        },
+        reason: reason || '',
+      });
+
+      return res.json({
+        message: 'Band score overridden successfully',
+        studentStatsId: stats._id,
+        skill,
+        oldBand,
+        newBand,
+        overallBand: stats.overallBand,
+        submission: submissionInfo,
+      });
+    } catch (err) {
+      console.error(
+        '[PATCH /faculty/students/:statsId/override-band] error:',
+        err
+      );
+      return res
+        .status(500)
+        .json({ message: 'Server error overriding band score' });
+    }
+  }
+);
+
+
+// PATCH /api/faculty/submissions/:id/override
+router.patch( "/submissions/:id/override", protect, restrictTo(["faculty", "admin"]),
+  [
+    body("newBandScore")
+      .exists()
+      .withMessage("newBandScore is required")
+      .isFloat({ min: 0, max: 9 })
+      .withMessage("newBandScore must be between 0 and 9"),
+    body("reason").optional().isString().isLength({ max: 500 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const { id } = req.params;
+      const { newBandScore, reason } = req.body;
+
+      const submission = await Submission.findById(id);
+      if (!submission) {
+        return res.status(404).json({ message: "Submission not found" });
+      }
+
+      const isAdmin = req.user.role === "admin";
+      const facultyCanEdit =
+        !!req.user.facultyPermissions &&
+        !!req.user.facultyPermissions.canEditScores;
+
+      if (!isAdmin && !facultyCanEdit) {
+        return res
+          .status(403)
+          .json({ message: "Not allowed to override scores" });
+      }
+
+      // normalize to 1–9, step 0.5
+      function normalizeBand(num) {
+        let n = Number(num);
+        if (!Number.isFinite(n)) n = 1;
+        if (n < 1) n = 1;
+        if (n > 9) n = 9;
+        return Math.round(n * 2) / 2;
+      }
+
+      const normalizedBand = normalizeBand(newBandScore);
+
+      const oldSubmissionBand = submission.bandScore;
+      const alreadyOverridden = !!submission.isOverridden;
+
+      // Store original bandScore only first time
+      if (!alreadyOverridden) {
+        submission.originalBandScore =
+          typeof submission.bandScore === "number"
+            ? submission.bandScore
+            : null;
+      }
+
+      submission.bandScore = normalizedBand;
+      submission.overrideReason = reason || "";
+      submission.overriddenBy = req.user._id;
+      submission.isOverridden = true;
+      submission.overriddenAt = new Date();
+
+      await submission.save();
+
+      let statsBefore = null;
+      let statsAfter = null;
+
+      let stats = await StudentStats.findOne({ student: submission.student });
+
+      if (!stats) {
+        // if stats row doesn't exist yet, create a basic one
+        stats = new StudentStats({
+          student: submission.student,
+        });
+      }
+
+      // snapshot BEFORE
+      statsBefore = {
+        readingBand: stats.readingBand,
+        listeningBand: stats.listeningBand,
+        writingBand: stats.writingBand,
+        speakingBand: stats.speakingBand,
+        overallBand: stats.overallBand,
+      };
+
+      if (submission.skill === "reading") {
+        stats.readingBand = normalizedBand;
+      } else if (submission.skill === "listening") {
+        stats.listeningBand = normalizedBand;
+      } else if (submission.skill === "writing") {
+        stats.writingBand = normalizedBand;
+      } else if (submission.skill === "speaking") {
+        stats.speakingBand = normalizedBand;
+      }
+
+      // recompute overallBand
+      const values = [
+        stats.readingBand,
+        stats.listeningBand,
+        stats.writingBand,
+        stats.speakingBand,
+      ].filter((v) => typeof v === "number" && v > 0);
+
+      stats.overallBand = values.length
+        ? Math.round(
+          (values.reduce((a, b) => a + b, 0) / values.length) * 2
+        ) / 2
+        : null;
+
+      await stats.save();
+
+      statsAfter = {
+        readingBand: stats.readingBand,
+        listeningBand: stats.listeningBand,
+        writingBand: stats.writingBand,
+        speakingBand: stats.speakingBand,
+        overallBand: stats.overallBand,
+      };
+
+      await AuditLog.create({
+        action: "submission_score_override",
+        targetType: "Submission",
+        targetId: submission._id,
+        changedBy: req.user._id,
+        changedByRole: req.user.role,
+        meta: {
+          studentId: submission.student,
+          testSetId: submission.testSet,
+          skill: submission.skill,
+        },
+        oldValue: {
+          bandScore: oldSubmissionBand,
+          originalBandScore: submission.originalBandScore ?? null,
+        },
+        newValue: {
+          bandScore: submission.bandScore,
+        },
+        reason: reason || "",
+      });
+
+      await AuditLog.create({
+        action: "student_stats_band_update",
+        targetType: "StudentStats",
+        targetId: stats._id,
+        changedBy: req.user._id,
+        changedByRole: req.user.role,
+        meta: {
+          studentId: stats.student,
+          skillUpdated: submission.skill,
+          viaSubmissionId: submission._id,
+        },
+        oldValue: statsBefore,
+        newValue: statsAfter,
+        reason:
+          reason ||
+          `Band updated via submission override for ${submission.skill}`,
+      });
+
+      return res.json({
+        message: "Score overridden",
+        submission,
+      });
+    } catch (err) {
+      console.error("[PATCH /submissions/:id/override] error:", err);
+      return res
+        .status(500)
+        .json({ message: "Server error overriding score", details: err.message });
+    }
+  }
+);
 
 module.exports = router;

@@ -26,7 +26,6 @@ interface User {
   joinDate: string;
 }
 
-// Helper to safely normalize user status into the exact union type
 function normalizeStatus(s: any): "active" | "inactive" {
   return s === "inactive" ? "inactive" : "active";
 }
@@ -35,29 +34,28 @@ export function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedRole, setSelectedRole] = useState<string>("all");
+
+  const [adminSearch, setAdminSearch] = useState("");
+  const [facultySearch, setFacultySearch] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<User>>({});
 
-  // Add-user dialog form state
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newSystemId, setNewSystemId] = useState("");
-  const [newRole, setNewRole] = useState<"admin" | "faculty" | "student">(
-    "student"
-  );
-  const [newIdValue, setNewIdValue] = useState(""); // employeeId or rollNo
+  const [newRole, setNewRole] = useState<"admin" | "faculty" | "student"> ( "student" );
+  const [newIdValue, setNewIdValue] = useState("");
   const [newCanEditScores, setNewCanEditScores] = useState(false);
   const [addLoading, setAddLoading] = useState(false);
   const [addMessage, setAddMessage] = useState<string | null>(null);
 
-  // Bulk upload
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  // Password reset dialog state
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [passwordUser, setPasswordUser] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -65,7 +63,6 @@ export function UserManagement() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
 
-  // ---------- Fetch users (reusable) ----------
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
@@ -100,13 +97,29 @@ export function UserManagement() {
     fetchUsers();
   }, [fetchUsers]);
 
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = selectedRole === "all" || user.role === selectedRole;
-    return matchesSearch && matchesRole;
-  });
+  const adminUsers = users.filter(
+    (u) =>
+      u.role === "admin" &&
+      (u.name.toLowerCase().includes(adminSearch.toLowerCase()) ||
+        u.email.toLowerCase().includes(adminSearch.toLowerCase()) ||
+        u.systemId.toLowerCase().includes(adminSearch.toLowerCase()))
+  );
+
+  const facultyUsers = users.filter(
+    (u) =>
+      u.role === "faculty" &&
+      (u.name.toLowerCase().includes(facultySearch.toLowerCase()) ||
+        u.email.toLowerCase().includes(facultySearch.toLowerCase()) ||
+        u.systemId.toLowerCase().includes(facultySearch.toLowerCase()))
+  );
+
+  const studentUsers = users.filter(
+    (u) =>
+      u.role === "student" &&
+      (u.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+        u.email.toLowerCase().includes(studentSearch.toLowerCase())||
+        u.systemId.toLowerCase().includes(studentSearch.toLowerCase()))
+  );
 
   const handleEdit = (user: User) => {
     setEditingUser(user);
@@ -124,8 +137,8 @@ export function UserManagement() {
 
   const handleChangePassword = async () => {
     if (!passwordUser) return;
-    setPasswordMessage(null);
 
+    setPasswordMessage(null);
     if (!newPassword || newPassword.length < 4) {
       setPasswordMessage("Password must be at least 4 characters.");
       return;
@@ -150,7 +163,6 @@ export function UserManagement() {
         return;
       }
 
-      // ✅ Refetch users so UI stays in sync and any weird state is reset
       await fetchUsers();
 
       setPasswordMessage("Password updated successfully.");
@@ -175,36 +187,36 @@ export function UserManagement() {
     try {
       const res = await api.apiPut(`/admin/users/${id}`, payload);
       if (!res.ok) {
-        console.error("Failed update user", res);
         alert(res.error?.message || "Failed to update user");
         return;
       }
       const updated = res.data?.user || res.data;
+
       setUsers((prev) =>
         prev.map((u) =>
           u.id === id
             ? {
-                id: updated._id || updated.id || id,
-                name: updated.name,
-                email: updated.email,
-                systemId: updated.systemId,
-                role: updated.role,
-                status: normalizeStatus(
-                  updated.isActive === false
-                    ? "inactive"
-                    : updated.status ?? "active"
-                ),
-                joinDate: updated.createdAt
-                  ? new Date(updated.createdAt).toISOString().slice(0, 10)
-                  : u.joinDate,
-              }
+              id: updated._id || updated.id || id,
+              name: updated.name,
+              email: updated.email,
+              systemId: updated.systemId,
+              role: updated.role,
+              status: normalizeStatus(
+                updated.isActive === false
+                  ? "inactive"
+                  : updated.status ?? "active"
+              ),
+              joinDate: updated.createdAt
+                ? new Date(updated.createdAt).toISOString().slice(0, 10)
+                : u.joinDate,
+            }
             : u
         )
       );
+
       setIsDialogOpen(false);
       setEditingUser(null);
     } catch (err) {
-      console.error("Error saving edit", err);
       alert("Network error while updating user");
     }
   };
@@ -218,32 +230,23 @@ export function UserManagement() {
     try {
       const res = await api.apiDelete(`/admin/users/${userId}`);
 
-      console.log("[Delete] api response object:", res);
-
       if (!res.ok) {
         const serverMessage =
           res.error?.message ||
           (typeof res.error === "string" ? res.error : null) ||
           (res.data && res.data.message) ||
           `Server returned ${res.status || "an unknown status"}`;
-        console.error("Delete failed ->", {
-          status: res.status,
-          serverMessage,
-          raw: res,
-        });
         alert(`Failed to delete user: ${serverMessage}`);
         return;
       }
-      console.log("[Delete] response full:", JSON.stringify(res, null, 2));
+
       setUsers((prev) => prev.filter((u) => u.id !== userId));
       alert("User deleted successfully.");
     } catch (err) {
-      console.error("Network or unexpected error while deleting user", err);
-      alert("Network error while deleting user. See console for details.");
+      alert("Network error while deleting user.");
     }
   };
 
-  // ---------- Add single user ----------
   const openAddDialog = () => {
     setNewName("");
     setNewEmail("");
@@ -257,9 +260,7 @@ export function UserManagement() {
   const handleCreateUser = async () => {
     setAddMessage(null);
     if (!newName || !newEmail || !newIdValue) {
-      setAddMessage(
-        "Please fill name, email and the ID (rollNo or employeeId)."
-      );
+      setAddMessage("Please fill name, email and the ID.");
       return;
     }
     setAddLoading(true);
@@ -268,7 +269,7 @@ export function UserManagement() {
         name: newName,
         email: newEmail,
         systemId: newSystemId,
-        password: newIdValue, // admin sets password as rollNo or employeeId
+        password: newIdValue,
         role: newRole,
       };
       if (newRole === "faculty") payload.canEditScores = newCanEditScores;
@@ -281,45 +282,32 @@ export function UserManagement() {
       }
 
       const created = res.data?.user || res.data || null;
-      if (created) {
-        const newUser: User = {
-          id: created._id || String(Math.random()),
-          name: created.name || newName,
-          email: created.email || newEmail,
-          systemId: created.systemId || newSystemId,
-          role: (created.role || newRole) as "admin" | "faculty" | "student",
-          status: normalizeStatus(
-            created.status ??
-              (created.isActive === false ? "inactive" : "active")
-          ),
-          joinDate: created.createdAt
-            ? new Date(created.createdAt).toISOString().slice(0, 10)
-            : new Date().toISOString().slice(0, 10),
-        };
-        setUsers((prev) => [newUser, ...prev]);
-      } else {
-        const newUser: User = {
-          id: String(Math.random()),
-          name: newName,
-          email: newEmail,
-          systemId: newSystemId,
-          role: newRole,
-          status: "active",
-          joinDate: new Date().toISOString().slice(0, 10),
-        };
-        setUsers((prev) => [newUser, ...prev]);
-      }
-      setAddMessage("User created successfully.");
+      const newUser: User = {
+        id: created?._id || String(Math.random()),
+        name: created?.name || newName,
+        email: created?.email || newEmail,
+        systemId: created?.systemId || newSystemId,
+        role: (created?.role || newRole) as any,
+        status: normalizeStatus(
+          created?.status ??
+          (created?.isActive === false ? "inactive" : "active")
+        ),
+        joinDate: created?.createdAt
+          ? new Date(created.createdAt).toISOString().slice(0, 10)
+          : new Date().toISOString().slice(0, 10),
+      };
+
+      setUsers((prev) => [newUser, ...prev]);
       setIsAddOpen(false);
     } catch (err) {
       setAddLoading(false);
       setAddMessage("Network error while creating user.");
-      console.error(err);
     }
   };
 
-  // ---------- Bulk upload CSV ----------
-  async function handleBulkFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleBulkFileChange(
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
     setBulkMessage(null);
     const file = e.target.files?.[0];
     if (!file) return;
@@ -356,9 +344,7 @@ export function UserManagement() {
           role,
         };
 
-        // Prefer explicit password column if present
         let password = r.password || r.pass || r.pwd || "";
-
         if (!password) {
           if (role === "student") {
             password = r.rollNo || r.roll_no || r.roll || base.systemId;
@@ -390,42 +376,92 @@ export function UserManagement() {
         name: p.name || "",
         email: p.email || "",
         systemId: p.systemId || "",
-        role: (p.role || "student") as "admin" | "faculty" | "student",
+        role: (p.role || "student") as any,
         status: normalizeStatus(p.status ?? "active"),
         joinDate: new Date().toISOString().slice(0, 10),
       }));
 
       setUsers((prev) => [...appended, ...prev]);
-      setBulkMessage(`Bulk upload successful (${payload.length} records).`);
+      setBulkMessage(
+        `Bulk upload successful (${payload.length} records).`
+      );
     } catch (err) {
       setBulkLoading(false);
-      console.error(err);
-      setBulkMessage(
-        "Failed to read or parse file. Ensure it's a CSV with proper headers."
-      );
+      setBulkMessage("Failed to read or parse file.");
     }
   }
 
+  const renderTable = (title: string, list: User[], search: string, setSearch: any) => (
+    <Card className="overflow-hidden">
+      <div className="flex justify-between items-center px-6 py-3 border-b bg-muted">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <Input
+          placeholder={`Search ${title.toLowerCase()}...`}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-xs"
+        />
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-muted">
+            <tr className="border-b border-border">
+              <th className="px-6 py-3 text-left text-sm font-semibold">Name</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold">Email</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold">System ID</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold">Role</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold">Join Date</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {loadingUsers ? (
+              <tr>
+                <td colSpan={6} className="p-6 text-center">
+                  Loading...
+                </td>
+              </tr>
+            ) : list.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-6 text-center text-sm text-muted-foreground">
+                  No data found.
+                </td>
+              </tr>
+            ) : (
+              list.map((user) => (
+                <tr key={user.id} className="border-b hover:bg-muted/30">
+                  <td className="px-6 py-4 text-sm">{user.name}</td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground">{user.email}</td>
+                  <td className="px-6 py-4 text-sm">{user.systemId}</td>
+                  <td className="px-6 py-4 text-sm capitalize">{user.role}</td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground">{user.joinDate}</td>
+                  <td className="px-6 py-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
+                        <Edit2 className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => openPasswordDialog(user)}>
+                        <Lock className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(user.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+
   return (
     <div className="space-y-4">
-      {/* Top controls */}
       <div className="flex items-center gap-4">
-        <Input
-          placeholder="Search users..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-1"
-        />
-        <select
-          value={selectedRole}
-          onChange={(e) => setSelectedRole(e.target.value)}
-          className="px-3 py-2 border border-border rounded bg-background"
-        >
-          <option value="all">All Roles</option>
-          <option value="admin">Admin</option>
-          <option value="faculty">Faculty</option>
-          <option value="student">Student</option>
-        </select>
 
         {/* Add User Dialog */}
         <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
@@ -434,41 +470,29 @@ export function UserManagement() {
               <Plus className="w-4 h-4" /> Add User
             </Button>
           </DialogTrigger>
+
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add New User</DialogTitle>
               <DialogDescription>
-                Create a new user account for the platform
+                Create a new user account
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-4">
               <div>
                 <label className="text-sm block mb-1">Full Name</label>
-                <Input
-                  placeholder="Full Name"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                />
+                <Input value={newName} onChange={(e) => setNewName(e.target.value)} />
               </div>
 
               <div>
                 <label className="text-sm block mb-1">Email Address</label>
-                <Input
-                  type="email"
-                  placeholder="Email Address"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                />
+                <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
               </div>
 
               <div>
                 <label className="text-sm block mb-1">Enter Id</label>
-                <Input
-                  placeholder="Id"
-                  value={newSystemId}
-                  onChange={(e) => setNewSystemId(e.target.value)}
-                />
+                <Input value={newSystemId} onChange={(e) => setNewSystemId(e.target.value)} />
               </div>
 
               <div>
@@ -478,7 +502,7 @@ export function UserManagement() {
                   onChange={(e) =>
                     setNewRole(e.target.value as "admin" | "faculty" | "student")
                   }
-                  className="w-full px-3 py-2 border border-border rounded bg-background"
+                  className="w-full px-3 py-2 border rounded"
                 >
                   <option value="admin">Admin</option>
                   <option value="faculty">Faculty</option>
@@ -492,10 +516,7 @@ export function UserManagement() {
                     ? "Password"
                     : "Student Roll Number Can be Password"}
                 </label>
-                <Input
-                  value={newIdValue}
-                  onChange={(e) => setNewIdValue(e.target.value)}
-                />
+                <Input value={newIdValue} onChange={(e) => setNewIdValue(e.target.value)} />
               </div>
 
               {newRole === "faculty" && (
@@ -506,9 +527,7 @@ export function UserManagement() {
                     checked={newCanEditScores}
                     onChange={(e) => setNewCanEditScores(e.target.checked)}
                   />
-                  <label htmlFor="canEdit" className="text-sm">
-                    Faculty can edit/override scores
-                  </label>
+                  <label htmlFor="canEdit">Faculty can edit/override scores</label>
                 </div>
               )}
 
@@ -528,173 +547,55 @@ export function UserManagement() {
           </DialogContent>
         </Dialog>
 
-        {/* Bulk upload input */}
         <div className="flex items-center gap-2">
-          <label className="cursor-pointer inline-flex items-center px-3 py-2 border border-border rounded bg-background">
-            <input
-              type="file"
-              accept=".csv"
-              onChange={handleBulkFileChange}
-              className="hidden"
-            />
+          <label className="cursor-pointer inline-flex px-3 py-2 border rounded">
+            <input type="file" accept=".csv" onChange={handleBulkFileChange} className="hidden" />
             <span className="text-sm">Upload CSV</span>
           </label>
         </div>
       </div>
 
-      {/* Users table */}
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-muted">
-              <tr className="border-b border-border">
-                <th className="px-6 py-3 text-left text-sm font-semibold">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">
-                  Email
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">
-                  System ID
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">
-                  Join Date
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingUsers ? (
-                <tr>
-                  <td colSpan={7} className="p-6 text-center">
-                    Loading users...
-                  </td>
-                </tr>
-              ) : filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="p-6 text-center">
-                    No users found.
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((user) => (
-                  <tr
-                    key={user.id}
-                    className="border-b border-border hover:bg-muted/30"
-                  >
-                    <td className="px-6 py-4 text-sm">{user.name}</td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">
-                      {user.email}
-                    </td>
-                    <td className="px-6 py-4 text-sm">{user.systemId}</td>
-                    <td className="px-6 py-4 text-sm">
-                      <span className="px-2 py-1 rounded bg-secondary text-secondary-foreground text-xs font-medium capitalize">
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-medium ${
-                          user.status === "active"
-                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                            : "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
-                        }`}
-                      >
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">
-                      {user.joinDate}
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          title="Edit User"
-                          size="sm"
-                          onClick={() => handleEdit(user)}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          title="Change Password"
-                          size="sm"
-                          onClick={() => openPasswordDialog(user)}
-                        >
-                          <Lock className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          title="Delete User"
-                          size="sm"
-                          onClick={() => handleDeleteUser(user.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      {/* TABLES */}
+      {renderTable("Admins", adminUsers, adminSearch, setAdminSearch)}
+      {renderTable("Faculty", facultyUsers, facultySearch, setFacultySearch)}
+      {renderTable("Students", studentUsers, studentSearch, setStudentSearch)}
 
       {bulkLoading && <div className="text-sm">Uploading CSV...</div>}
-      {bulkMessage && (
-        <div className="text-sm text-green-700">{bulkMessage}</div>
-      )}
+      {bulkMessage && <div className="text-sm text-green-700">{bulkMessage}</div>}
 
-      {/* Edit user dialog */}
+      {/* Edit User Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>
-              Update user information and permissions
-            </DialogDescription>
+            <DialogDescription>Update user details</DialogDescription>
           </DialogHeader>
+
           {editingUser && (
             <div className="space-y-4 py-4">
               <div>
-                <label className="text-sm font-medium mb-1 block">Name</label>
+                <label className="text-sm block">Name</label>
                 <Input
                   value={editFormData.name || ""}
                   onChange={(e) =>
-                    setEditFormData({
-                      ...editFormData,
-                      name: e.target.value,
-                    })
+                    setEditFormData({ ...editFormData, name: e.target.value })
                   }
                 />
               </div>
+
               <div>
-                <label className="text-sm font-medium mb-1 block">Email</label>
+                <label className="text-sm block">Email</label>
                 <Input
                   type="email"
                   value={editFormData.email || ""}
                   onChange={(e) =>
-                    setEditFormData({
-                      ...editFormData,
-                      email: e.target.value,
-                    })
+                    setEditFormData({ ...editFormData, email: e.target.value })
                   }
                 />
               </div>
+
               <div>
-                <label className="text-sm font-medium mb-1 block">
-                  System Id
-                </label>
+                <label className="text-sm block">System Id</label>
                 <Input
                   value={editFormData.systemId || ""}
                   onChange={(e) =>
@@ -705,8 +606,9 @@ export function UserManagement() {
                   }
                 />
               </div>
+
               <div>
-                <label className="text-sm font-medium mb-1 block">Role</label>
+                <label className="text-sm block">Role</label>
                 <select
                   value={editFormData.role || ""}
                   onChange={(e) =>
@@ -715,7 +617,7 @@ export function UserManagement() {
                       role: e.target.value as any,
                     })
                   }
-                  className="w-full px-3 py-2 border border-border rounded bg-background"
+                  className="w-full px-3 py-2 border rounded"
                 >
                   <option value="admin">Admin</option>
                   <option value="faculty">Faculty</option>
@@ -724,60 +626,52 @@ export function UserManagement() {
               </div>
             </div>
           )}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveEdit}>Save Changes</Button>
+            <Button onClick={handleSaveEdit}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Change password dialog */}
+      {/* Password Dialog */}
       <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Change Password{" "}
-              {passwordUser ? `for ${passwordUser.name}` : ""}
+              Change Password {passwordUser ? `for ${passwordUser.name}` : ""}
             </DialogTitle>
-            <DialogDescription>
-              Set a new password for this user. They will use it the next time
-              they log in.
-            </DialogDescription>
+            <DialogDescription>Update user password</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div>
-              <label className="text-sm font-medium mb-1 block">
-                New Password
-              </label>
+              <label className="text-sm block">New Password</label>
               <Input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
               />
             </div>
+
             <div>
-              <label className="text-sm font-medium mb-1 block">
-                Confirm New Password
-              </label>
+              <label className="text-sm block">Confirm Password</label>
               <Input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
               />
             </div>
+
             {passwordMessage && (
               <div className="text-sm text-red-600">{passwordMessage}</div>
             )}
           </div>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsPasswordDialogOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setIsPasswordDialogOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleChangePassword} disabled={passwordLoading}>

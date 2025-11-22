@@ -34,6 +34,8 @@ const StudentStatsSchema = new mongoose.Schema(
 
     // overall band (average of available bands)
     overallBand: { type: Number, default: null },
+
+    hasManualOverride: { type: Boolean, default: false },
   },
   {
     timestamps: true,

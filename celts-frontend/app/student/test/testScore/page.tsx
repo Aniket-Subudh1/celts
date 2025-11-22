@@ -2,6 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { BookOpen, FileText, Loader2 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card } from "@/components/ui/card";
@@ -10,13 +11,10 @@ import api from "@/lib/api";
 import { navItems } from "@/components/student/NavItems";
 
 interface CriteriaBreakdown {
-  // Writing-style breakdown (objects)
   task_response?: { score?: number; feedback?: string };
   cohesion_coherence?: { score?: number; feedback?: string };
   lexical_resource?: { score?: number; feedback?: string };
   grammatical_range_accuracy?: { score?: number; feedback?: string };
-
-  // Speaking-style breakdown (plain numbers)
   fluency?: number;
   coherence?: number;
   vocabulary?: number;
@@ -28,7 +26,7 @@ interface GeminiEval {
   band_score?: number;
   criteria_breakdown?: CriteriaBreakdown;
   examiner_summary?: string;
-  transcription?: string; // for speaking (if you want to show it later)
+  transcription?: string;
 }
 
 interface SubmissionSummary {
@@ -37,29 +35,19 @@ interface SubmissionSummary {
   testTitle?: string;
   skill?: string;
   status?: string;
-
   totalMarks: number;
   maxMarks: number;
-
   totalQuestions: number;
   attemptedCount: number;
   unattemptedCount: number;
-
   correctCount: number;
   incorrectCount: number;
-
   bandScore: number | null;
-
   geminiEvaluation?: GeminiEval | null;
   geminiError?: string | null;
-
-  // ✅ NEW skill-specific summary fields from backend
   geminiWritingEvaluationSummary?: string | null;
   geminiSpeakingEvaluationSummary?: string | null;
-
-  // ✅ Generic, skill-aware summary from backend (optional)
   examinerSummary?: string | null;
-
   student?: {
     _id?: string;
     name?: string;
@@ -81,16 +69,12 @@ export default function TestScorePage() {
 
   useEffect(() => {
     const stored =
-      typeof window !== "undefined"
-        ? localStorage.getItem("celts_user")
-        : null;
+      typeof window !== "undefined" ? localStorage.getItem("celts_user") : null;
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
         setUserName(parsed.name || "Student");
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
   }, []);
 
@@ -102,16 +86,12 @@ export default function TestScorePage() {
     fetchSummary(submissionId);
   }, [submissionId]);
 
-  // Auto-refresh for async-graded skills (writing/speaking) while status is pending
   useEffect(() => {
     if (!submissionId || !summary) return;
-
     const isAsyncSkill =
       summary.skill === "writing" || summary.skill === "speaking";
-
     if (!isAsyncSkill) return;
-    if (summary.status !== "pending") return; // already graded or failed
-
+    if (summary.status !== "pending") return;
     let attempts = 0;
     const interval = setInterval(async () => {
       attempts += 1;
@@ -124,15 +104,11 @@ export default function TestScorePage() {
             clearInterval(interval);
           }
         }
-      } catch {
-        // ignore transient errors while polling
-      }
-
+      } catch {}
       if (attempts > 20) {
         clearInterval(interval);
       }
     }, 3000);
-
     return () => clearInterval(interval);
   }, [submissionId, summary]);
 
@@ -190,14 +166,13 @@ export default function TestScorePage() {
   const isSpeaking = summary?.skill === "speaking";
   const isWritingOrSpeaking = isWriting || isSpeaking;
 
-  // ✅ Decide which summary to show on the UI
   const examinerSummary =
     summary?.examinerSummary ||
     (isWriting
       ? summary?.geminiWritingEvaluationSummary
       : isSpeaking
-        ? summary?.geminiSpeakingEvaluationSummary
-        : null) ||
+      ? summary?.geminiSpeakingEvaluationSummary
+      : null) ||
     summary?.geminiEvaluation?.examiner_summary ||
     null;
 
@@ -212,247 +187,184 @@ export default function TestScorePage() {
       : undefined;
 
   return (
-    <DashboardLayout
-      navItems={navItems}
-      sidebarHeader="CELTS Student"
-      userName={userName}
-    >
-      <div className="max-w-3xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold mb-1">Test Result</h1>
-            <p className="text-muted-foreground">
-              Detailed performance for this{" "}
-              {summary ? skillLabel(summary.skill) : "test"}.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push("/student/test")}
+    <DashboardLayout navItems={navItems} sidebarHeader="CELTS Student" userName={userName}>
+      <div className="min-h-screen flex justify-center bg-gray-50 py-12 px-4">
+        <div className="w-full max-w-[1200px] space-y-10">
+          <header
+            className="rounded-3xl p-10 text-white shadow-2xl relative overflow-hidden"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(99,102,241,1) 0%, rgba(139,92,246,1) 50%, rgba(59,130,246,1) 100%)",
+              boxShadow: "0 20px 50px rgba(63,63,188,0.18)",
+            }}
           >
-            Back to My Tests
-          </Button>
-        </div>
+            <div className="max-w-3xl">
+              <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight drop-shadow-sm">Test Result</h1>
+              <p className="mt-3 text-indigo-100 max-w-2xl text-sm md:text-base leading-relaxed">
+                Detailed performance summary for this test. Metrics shown below are generated from your submission and automated evaluation.
+              </p>
+            </div>
+            <div
+              aria-hidden
+              className="absolute -right-40 -top-24 w-[420px] h-[420px] rounded-full opacity-10 blur-3xl"
+              style={{
+                background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18), rgba(139,92,246,0.0))",
+              }}
+            />
+          </header>
 
-        {loading && <p>Loading score...</p>}
-        {error && <p className="text-red-600">{error}</p>}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-2xl font-semibold">{summary?.testTitle || "Test result"}</h2>
+                <p className="text-sm text-indigo-700">{summary ? `${skillLabel(summary.skill)} • ${statusLabel(summary.status)}` : "Loading..."}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button variant="outline" size="sm" onClick={() => router.push("/student/test")}>Back to My Tests</Button>
+                <Button size="sm" onClick={() => router.push("/student/scores")}>Go to Overall Scores</Button>
+              </div>
+            </div>
 
-        {!loading && !error && !summary && (
-          <p>No submission found. Please go back to the tests page.</p>
-        )}
+            {loading && (
+              <div className="p-6 rounded-2xl bg-white/90 border border-slate-100 shadow-sm flex items-center gap-3">
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                <div className="text-sm text-slate-600">Loading score...</div>
+              </div>
+            )}
 
-        {!loading && !error && summary && (
-          <>
-            <Card className="p-4 space-y-2">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
-                    {skillLabel(summary.skill)} Test •{" "}
-                    {statusLabel(summary.status)}
-                  </p>
-                  <h2 className="text-2xl font-semibold">
-                    {summary.testTitle || "Untitled Test"}
-                  </h2>
-                  {summary.createdAt && (
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Submitted at:{" "}
-                      {new Date(summary.createdAt).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-                {summary.student && (
-                  <div className="text-right text-sm">
-                    <div className="font-semibold">
-                      {summary.student.name}
+            {error && (
+              <div className="p-6 rounded-2xl bg-white/90 border border-rose-100 shadow-sm">
+                <div className="text-sm text-rose-600">{error}</div>
+              </div>
+            )}
+
+            {!loading && !error && !summary && (
+              <div className="p-6 rounded-2xl bg-white/90 border border-slate-100 shadow-sm">
+                <div className="text-sm text-slate-600">No submission found. Please go back to the tests page.</div>
+              </div>
+            )}
+
+            {!loading && !error && summary && (
+              <div className="space-y-6">
+                <Card className="relative rounded-2xl p-6 bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13, 13, 50, 0.06)" }}>
+                  <div className="flex items-start justify-between gap-6">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">{skillLabel(summary.skill)} Test • {statusLabel(summary.status)}</p>
+                      <h3 className="text-xl font-semibold text-slate-900">{summary.testTitle || "Untitled Test"}</h3>
+                      {summary.createdAt && <p className="text-sm text-muted-foreground mt-2">Submitted at: <span className="font-medium">{new Date(summary.createdAt).toLocaleString()}</span></p>}
                     </div>
-                    {summary.student.systemId && (
-                      <div className="text-muted-foreground">
-                        ID: {summary.student.systemId}
-                      </div>
-                    )}
-                    {summary.student.email && (
-                      <div className="text-muted-foreground">
-                        {summary.student.email}
+
+                    {summary.student && (
+                      <div className="text-right text-sm">
+                        <div className="font-semibold">{summary.student.name}</div>
+                        {summary.student.systemId && <div className="text-muted-foreground">ID: {summary.student.systemId}</div>}
+                        {summary.student.email && <div className="text-muted-foreground">{summary.student.email}</div>}
                       </div>
                     )}
                   </div>
+                </Card>
+
+                {isWritingOrSpeaking ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Total Questions</p>
+                      <p className="text-2xl font-bold">{totalQ}</p>
+                    </Card>
+
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Attempted</p>
+                      <p className="text-2xl font-bold">{attempted}</p>
+                    </Card>
+
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Unattempted</p>
+                      <p className="text-2xl font-bold">{unattempted}</p>
+                    </Card>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Total Questions</p>
+                      <p className="text-2xl font-bold">{totalQ}</p>
+                    </Card>
+
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Attempted</p>
+                      <p className="text-2xl font-bold">{attempted}</p>
+                    </Card>
+
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Unattempted</p>
+                      <p className="text-2xl font-bold">{unattempted}</p>
+                    </Card>
+
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Total Marks</p>
+                      <p className="text-2xl font-bold">{summary.totalMarks}/{summary.maxMarks}</p>
+                    </Card>
+                  </div>
+                )}
+
+                {isWritingOrSpeaking ? (
+                  <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                    <p className="text-xs text-muted-foreground mb-1">Band Score ({skillLabel(summary.skill)})</p>
+                    <p className="text-2xl font-bold text-indigo-700">{bandText}</p>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Correct</p>
+                      <p className="text-2xl font-bold text-green-600">{summary.correctCount}</p>
+                    </Card>
+
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Incorrect</p>
+                      <p className="text-2xl font-bold text-red-600">{summary.incorrectCount}</p>
+                    </Card>
+
+                    <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                      <p className="text-xs text-muted-foreground mb-1">Band Score ({skillLabel(summary.skill)})</p>
+                      <p className="text-2xl font-bold text-indigo-700">{bandText}</p>
+                    </Card>
+                  </div>
+                )}
+
+                {isWritingOrSpeaking && (examinerSummary || summary.geminiError) && (
+                  <Card className="p-6 rounded-2xl bg-gradient-to-b from-white/80 to-white/90 border border-transparent" style={{ boxShadow: "inset -6px -6px 18px rgba(255,255,255,0.8), inset 6px 6px 18px rgba(0,0,0,0.03), 0 8px 30px rgba(13,13,50,0.06)" }}>
+                    {examinerSummary && (
+                      <div className="mb-4">
+                        <p className="text-xs text-muted-foreground mb-1">{isWriting ? "Writing Examiner Summary" : "Speaking Examiner Summary"}</p>
+                        <p className="text-sm whitespace-pre-wrap">{examinerSummary}</p>
+                      </div>
+                    )}
+
+                    {summary.geminiError && <div className="text-xs text-rose-600">AI evaluation note: {summary.geminiError}</div>}
+
+                    {isSpeaking && speakingCriteria && (
+                      <div className="mt-4">
+                        <p className="text-xs text-muted-foreground mb-2">Criteria Breakdown</p>
+                        <div className="grid grid-cols-2 gap-y-1 text-sm">
+                          <div>Fluency: {speakingCriteria.fluency ?? "—"}</div>
+                          <div>Coherence: {speakingCriteria.coherence ?? "—"}</div>
+                          <div>Vocabulary: {speakingCriteria.vocabulary ?? "—"}</div>
+                          <div>Grammar: {speakingCriteria.grammar ?? "—"}</div>
+                          <div>Pronunciation: {speakingCriteria.pronunciation ?? "—"}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {isSpeaking && speakingTranscription && (
+                      <div className="mt-4">
+                        <p className="text-xs text-muted-foreground mb-1">Transcription</p>
+                        <p className="text-sm whitespace-pre-wrap">{speakingTranscription}</p>
+                      </div>
+                    )}
+                  </Card>
                 )}
               </div>
-            </Card>
-
-            {/* Score breakdown */}
-            {isWritingOrSpeaking ? (
-              // For writing & speaking: show total Q, attempted, unattempted only
-              <Card className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Total Questions
-                  </p>
-                  <p className="text-2xl font-bold">{totalQ}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Attempted
-                  </p>
-                  <p className="text-2xl font-bold">{attempted}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Unattempted
-                  </p>
-                  <p className="text-2xl font-bold">{unattempted}</p>
-                </div>
-              </Card>
-            ) : (
-              // Reading & listening
-              <Card className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Total Questions
-                  </p>
-                  <p className="text-2xl font-bold">{totalQ}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Attempted
-                  </p>
-                  <p className="text-2xl font-bold">{attempted}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Unattempted
-                  </p>
-                  <p className="text-2xl font-bold">{unattempted}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Total Marks
-                  </p>
-                  <p className="text-2xl font-bold">
-                    {summary.totalMarks}/{summary.maxMarks}
-                  </p>
-                </div>
-              </Card>
             )}
-
-            {/* Correct / incorrect / band */}
-            {isWritingOrSpeaking ? (
-              // For writing & speaking: only band score
-              <Card className="p-4">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Band Score ({skillLabel(summary.skill)})
-                  </p>
-                  <p className="text-2xl font-bold text-primary">{bandText}</p>
-                </div>
-              </Card>
-            ) : (
-              // Reading & listening: keep correct/incorrect + band
-              <Card className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Correct
-                  </p>
-                  <p className="text-2xl font-bold text-green-600">
-                    {summary.correctCount}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Incorrect
-                  </p>
-                  <p className="text-2xl font-bold text-red-600">
-                    {summary.incorrectCount}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Band Score ({skillLabel(summary.skill)})
-                  </p>
-                  <p className="text-2xl font-bold text-primary">{bandText}</p>
-                </div>
-              </Card>
-            )}
-
-            {/* AI evaluation details – writing & speaking */}
-            {isWritingOrSpeaking && (examinerSummary || summary.geminiError) && (
-              <Card className="p-4 space-y-4">
-                {/* Examiner summary */}
-                {examinerSummary && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">
-                      {isWriting
-                        ? "Writing Examiner Summary"
-                        : "Speaking Examiner Summary"}
-                    </p>
-                    <p className="text-sm whitespace-pre-wrap">
-                      {examinerSummary}
-                    </p>
-                  </div>
-                )}
-
-                {/* Any AI error note */}
-                {summary.geminiError && (
-                  <p className="text-xs text-red-600">
-                    AI evaluation note: {summary.geminiError}
-                  </p>
-                )}
-
-                {/* Optional: show criteria and transcription for speaking */}
-                {isSpeaking && speakingCriteria && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground mb-1">
-                      Criteria Breakdown
-                    </p>
-                    <div className="grid grid-cols-2 gap-y-1 text-sm">
-                      <div>
-                        Fluency: {speakingCriteria.fluency ?? "—"}
-                      </div>
-                      <div>
-                        Coherence: {speakingCriteria.coherence ?? "—"}
-                      </div>
-                      <div>
-                        Vocabulary: {speakingCriteria.vocabulary ?? "—"}
-                      </div>
-                      <div>
-                        Grammar: {speakingCriteria.grammar ?? "—"}
-                      </div>
-                      <div>
-                        Pronunciation: {speakingCriteria.pronunciation ?? "—"}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-
-                {isSpeaking && speakingTranscription && (
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">
-                      Transcription
-                    </p>
-                    <p className="text-sm whitespace-pre-wrap">
-                      {speakingTranscription}
-                    </p>
-                  </div>
-                )}
-              </Card>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push("/student/test")}
-              >
-                Back to My Tests
-              </Button>
-              <Button size="sm" onClick={() => router.push("/student/scores")}>
-                Go to Overall Scores
-              </Button>
-            </div>
-          </>
-        )}
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   );

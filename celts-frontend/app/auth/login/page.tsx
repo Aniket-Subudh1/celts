@@ -49,9 +49,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex overflow-x-hidden"> {/* FIX ADDED */}
+      
       {/* Left side - image */}
-      <div className="hidden md:flex w-[60%] relative bg-gray-100">
+      <div className="hidden md:flex relative bg-gray-100 md:flex-[3]"> {/* FIX: FLEX RATIO */}
         <Image
           src="/login-bg.jpg"
           alt="Login background"
@@ -59,14 +60,16 @@ export default function LoginPage() {
           className="object-cover"
           priority
         />
-        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-white text-center"> Welcome to CELTS Portal </h1>
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center px-4">
+          <h1 className="text-4xl md:text-5xl font-bold text-white text-center leading-tight">
+            Welcome to CELTS Portal
+          </h1>
         </div>
       </div>
 
-
-      {/* Right side - login section */}
-      <div className="flex flex-col w-full md:w-[40%] items-center justify-center bg-white px-10 py-12">
+      {/* Right side - login */}
+      <div className="flex flex-col w-full md:flex-[2] items-center justify-center bg-white px-8 md:px-10 py-12"> {/* FIXED */}
+        
         <div className="mb-8 flex flex-col items-center">
           <Image
             src="/cutm_logo.png"
@@ -75,16 +78,18 @@ export default function LoginPage() {
             height={180}
             className="mb-8"
           />
-          {/* <h2 className="text-3xl font-semibold text-gray-800">CELTS Login</h2> */}
-          <h6 className="text-2xl font-semibold text-gray-800">Centurion English Language Testing System</h6>
-
+          <h6 className="text-2xl font-semibold text-gray-800 text-center px-2">
+            Centurion English Language Testing System
+          </h6>
         </div>
 
         {/* Login card */}
         <Card className="w-full max-w-lg p-10 shadow-lg space-y-6">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <Label htmlFor="email" className="text-base font-medium">Email</Label>
+              <Label htmlFor="email" className="text-base font-medium">
+                Email
+              </Label>
               <Input
                 id="email"
                 value={email}
@@ -95,7 +100,9 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <Label htmlFor="password" className="text-base font-medium">Password</Label>
+              <Label htmlFor="password" className="text-base font-medium">
+                Password
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -114,11 +121,10 @@ export default function LoginPage() {
           </form>
         </Card>
 
-        {/* Footer */}
-        <footer className="mt-10 text-sm text-gray-500 text-center">
+        <footer className="mt-10 text-sm text-gray-500 text-center px-4">
           Made with ❤️ by <span className="font-medium text-gray-700">GT Tech Pvt. Ltd.</span>
         </footer>
       </div>
-    </div >
+    </div>
   )
 }
