@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import api from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { StorageInfo } from "./StorageInfo";
 
 type Option = { text: string };
 
@@ -72,7 +73,7 @@ export default function TestCreateForm() {
 
   const [listeningFiles, setListeningFiles] = useState<Record<string, File | null>>({});
   const [listeningUploadState, setListeningUploadState] = useState<
-    Record<string, { uploading: boolean; error?: string | null }>
+    Record<string, { uploading: boolean; error?: string | null; successMessage?: string }>
   >({});
 
   const [loading, setLoading] = useState(false);
@@ -333,7 +334,25 @@ export default function TestCreateForm() {
         prev.map(b => (b.id === blockId ? { ...b, audioUrl: returnedUrl } : b))
       );
 
-      setListeningUploadState(prev => ({ ...prev, [blockId]: { uploading: false, error: null } }));
+      const provider = parsed?.provider || 'unknown';
+      const successMessage = provider === 'S3' ? 'Uploaded to cloud storage' : 'Uploaded to local storage';
+      
+      setListeningUploadState(prev => ({ 
+        ...prev, 
+        [blockId]: { 
+          uploading: false, 
+          error: null, 
+          successMessage: successMessage 
+        } 
+      }));
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setListeningUploadState(prev => ({ 
+          ...prev, 
+          [blockId]: { ...prev[blockId], successMessage: undefined } 
+        }));
+      }, 3000);
     } catch (err: any) {
       setListeningUploadState(prev => ({
         ...prev,
@@ -802,6 +821,8 @@ export default function TestCreateForm() {
                   <Button type="button" onClick={addListeningBlock}>Add Audio</Button>
                 </div>
 
+                <StorageInfo />
+
                 {listeningBlocks.length === 0 && (
                   <div className="text-sm text-slate-500">No audios yet. Click "Add Audio".</div>
                 )}
@@ -853,6 +874,7 @@ export default function TestCreateForm() {
                           {selectedFile && <div className="text-sm text-slate-600">{selectedFile.name}</div>}
                         </div>
                         {uploadState.error && <div className="text-xs text-rose-600 mt-2">{uploadState.error}</div>}
+                        {uploadState.successMessage && <div className="text-xs text-green-600 mt-2">{uploadState.successMessage}</div>}
                       </div>
 
                       <div className="mt-4">
