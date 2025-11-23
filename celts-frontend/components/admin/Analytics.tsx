@@ -1,4 +1,3 @@
-// components/admin/Analytics.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -150,7 +149,7 @@ export function AdminAnalytics() {
         fetchAnalytics();
     }, []);
 
-    // ---------- Derived metrics ----------
+
     const roleCounts: RoleCounts = useMemo(() => {
         return {
             admin: admins.length,

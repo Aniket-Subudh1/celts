@@ -1,4 +1,3 @@
-// components/admin/AuditLog.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

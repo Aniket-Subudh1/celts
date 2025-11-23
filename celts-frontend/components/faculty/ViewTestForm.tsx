@@ -12,7 +12,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import api from "@/lib/api";
-import { Trash2, Layers, Eye } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Trash2, Layers, Eye, Shield } from "lucide-react";
 
 type Option = { text: string };
 
@@ -63,6 +64,7 @@ type TestSet = {
 type Batch = { _id: string; name: string };
 
 export function ViewTestForm() {
+  const router = useRouter();
   const [tests, setTests] = useState<TestSet[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -570,6 +572,13 @@ export function ViewTestForm() {
                       onClick={() => openQuestionsDialog(test)}
                     >
                       <Eye className="w-4 h-4" /> View Questions
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => router.push(`/faculty/proctorLogs?testId=${test._id}`)}
+                    >
+                      <Shield className="w-4 h-4" /> Proctor Logs
                     </Button>
                     <Button size="sm" onClick={() => openAssignDialog(test)}>
                       <Layers className="w-4 h-4" /> Assign

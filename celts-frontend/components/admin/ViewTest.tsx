@@ -4,14 +4,17 @@
 import { useEffect, useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   BookOpen,
   Headphones,
   Pen,
   Mic,
   ListChecks,
+  Shield,
 } from "lucide-react";
 import api from "@/lib/api";
+import { useRouter } from "next/navigation";
 import {
   Select,
   SelectTrigger,
@@ -162,6 +165,7 @@ function questionsForSection(
 }
 
 export function ViewTest() {
+  const router = useRouter();
   const [tests, setTests] = useState<TestSet[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -342,7 +346,7 @@ export function ViewTest() {
             {/* Header */}
             <Card className="p-4 space-y-2">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     {selectedTest.type === "reading" && (
                       <BookOpen className="w-5 h-5 text-primary" />
@@ -382,6 +386,18 @@ export function ViewTest() {
                         </>
                       )}
                   </p>
+                  
+                  <div className="mt-3">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => router.push(`/admin/proctorLogs?testId=${selectedTest._id}`)}
+                      className="gap-2"
+                    >
+                      <Shield className="w-4 h-4" />
+                      View Proctoring Logs
+                    </Button>
+                  </div>
                 </div>
 
                 {(selectedTest.createdAt || selectedTest.updatedAt || selectedTest.createdBy) && (

@@ -1,5 +1,5 @@
 
-import { BarChart, Users, School, FileText, TrendingUp, Book, History } from "lucide-react"
+import { BarChart, Users, School, FileText, TrendingUp, Book, History, AlertTriangle } from "lucide-react"
 
 export const navItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: <BarChart className="w-5 h-5" /> },
@@ -7,6 +7,7 @@ export const navItems = [
   { href: "/admin/batches", label: "Batch Management", icon: <School className="w-5 h-5" /> },
   { href: "/admin/permissions", label: "Permissions", icon: <FileText className="w-5 h-5" /> },
   { href: "/admin/viewTest", label: "View Test", icon: <Book className="w-5 h-5" /> },
+  { href: "/admin/testAttempts", label: "Test Attempts", icon: <AlertTriangle className="w-5 h-5" /> },
   { href: "/admin/analytics", label: "Analytics", icon: <TrendingUp className="w-5 h-5" /> },
   { href: "/admin/auditLog", label: "Audit Log", icon: <History className="w-5 h-5" /> },
 ]

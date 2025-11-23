@@ -20,6 +20,8 @@ const studentRoutes = require('./student');
 const teacherTestsRoutes = require('./teacherTests');
 const studentStatsRoutes = require('./studentStats');
 const adminAuditRoutes = require("./adminAudit");
+const securityRoutes = require('./security');
+const testSecurityRoutes = require('./testSecurity');
 
 
 // Root health check
@@ -38,6 +40,8 @@ router.use('/teacher/tests', teacherTestsRoutes);
 router.use('/student', studentStatsRoutes);
 router.use('/studentStats', studentStatsRoutes);
 router.use("/admin", adminAuditRoutes);
+router.use('/security', securityRoutes);
+router.use('/test', testSecurityRoutes); // Development/testing only
 
 
 

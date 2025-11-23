@@ -1,4 +1,3 @@
-// routes/student.js
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
@@ -7,24 +6,22 @@ const mongoose = require('mongoose');
 
 const Submission = require('../models/Submission');
 const TestSet = require('../models/TestSet');
+const TestAttempt = require('../models/TestAttempt');
 const Batch = require('../models/Batch');
 const StudentStats = require('../models/StudentStats');
 const { submissionQueue } = require('../services/queue');
 const uploadStudentMedia = require('../services/uploadStudentMedia');
 
 
-// Helper: compute band score from marks 
 function computeBandScore(earnedMarks, maxMarks) {
   if (!maxMarks || maxMarks <= 0) return 0;
   const raw = (earnedMarks / maxMarks) * 9;
   return Math.round(raw * 2) / 2;
 }
 
-//Helper: update / upsert StudentStats 
 async function updateStudentStatsForSkill({ student, skill, bandScore }) {
   if (bandScore == null) return;
 
-  // find ONE batch this student belongs to (if any)
   const batch = await Batch.findOne({ students: student._id }).select('_id name').lean();
 
   let stats = await StudentStats.findOne({ student: student._id });
@@ -38,7 +35,6 @@ async function updateStudentStatsForSkill({ student, skill, bandScore }) {
       batchName: batch ? batch.name : null,
     });
   } else {
-    // keep name/email/systemId in sync (in case they changed)
     stats.name = student.name;
     stats.email = student.email;
     stats.systemId = student.systemId;
@@ -106,15 +102,121 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
     }))
     );
 
+    // Get test attempts for this student
+    const testAttempts = await TestAttempt.find({
+      student: studentId,
+      testSet: { $in: tests.map(t => t._id) }
+    }).lean();
+
+    // Get submissions for this student to check evaluation status
+    const submissions = await Submission.find({
+      student: studentId,
+      testSet: { $in: tests.map(t => t._id) }
+    }).select('testSet skill status bandScore totalMarks maxMarks').lean();
+
+    // Create a map of testId -> attempt info
+    const attemptMap = new Map();
+    testAttempts.forEach(attempt => {
+      const testId = String(attempt.testSet);
+      const existing = attemptMap.get(testId);
+      
+      // Keep the latest attempt or the completed one
+      if (!existing || 
+          attempt.status === 'completed' || 
+          (attempt.status !== 'started' && existing.status === 'started') ||
+          attempt.createdAt > existing.createdAt) {
+        attemptMap.set(testId, {
+          status: attempt.status,
+          attemptNumber: attempt.attemptNumber,
+          isRetryAllowed: attempt.isRetryAllowed,
+          completedAt: attempt.completedAt,
+          startedAt: attempt.startedAt
+        });
+      }
+    });
+
+    // Create a map of testId -> submission status
+    const submissionMap = new Map();
+    submissions.forEach(submission => {
+      const testId = String(submission.testSet);
+      const existing = submissionMap.get(testId);
+      
+      // Collect all submissions for the test
+      if (!existing) {
+        submissionMap.set(testId, {
+          hasSubmissions: true,
+          allGraded: submission.status === 'graded',
+          anyPending: submission.status === 'pending',
+          anyFailed: submission.status === 'failed',
+          submissions: [submission]
+        });
+      } else {
+        existing.submissions.push(submission);
+        existing.allGraded = existing.allGraded && submission.status === 'graded';
+        existing.anyPending = existing.anyPending || submission.status === 'pending';
+        existing.anyFailed = existing.anyFailed || submission.status === 'failed';
+      }
+    });
+
     const normalizedTests = tests.map((t) => {
-      const status = 'upcoming';
+      const now = new Date();
+      let status = 'upcoming';
+      
+      // Determine status based on startTime and endTime
+      if (t.startTime) {
+        const startTime = new Date(t.startTime);
+        const endTime = t.endTime ? new Date(t.endTime) : null;
+        
+        if (endTime && now > endTime) {
+          status = 'completed';
+        } else if (now >= startTime) {
+          status = 'in-progress';
+        } else {
+          status = 'upcoming';
+        }
+      }
+
+      // Check if student has attempted this test
+      const testId = String(t._id);
+      const attempt = attemptMap.get(testId);
+      const submissionInfo = submissionMap.get(testId);
+      let attemptStatus = null;
+      let evaluationStatus = null;
+      
+      if (attempt) {
+        if (attempt.status === 'completed' || attempt.status === 'violation_exit' || attempt.status === 'abandoned') {
+          attemptStatus = 'attempted';
+          
+          // Check evaluation status for completed attempts
+          if (submissionInfo && submissionInfo.hasSubmissions) {
+            if (submissionInfo.anyPending) {
+              evaluationStatus = 'under_evaluation';
+            } else if (submissionInfo.allGraded) {
+              evaluationStatus = 'evaluated';
+            } else if (submissionInfo.anyFailed) {
+              evaluationStatus = 'evaluation_failed';
+            }
+          }
+          
+          // Override test status if completed
+          if (attempt.status === 'completed') {
+            status = 'completed';
+          }
+        } else if (attempt.status === 'started') {
+          attemptStatus = 'in-progress';
+        }
+      }
+      
       return {
         _id: t._id,
         title: t.title,
         type: t.type,
         timeLimitMinutes: t.timeLimitMinutes || 0,
-        scheduledDate: t.startTime || t.createdAt || null,
+        scheduledDate: t.startTime ? new Date(t.startTime).toISOString() : (t.createdAt ? new Date(t.createdAt).toISOString() : null),
         status,
+        attemptStatus,
+        attemptInfo: attempt || null,
+        evaluationStatus,
         bandScores: null,
       };
     });
@@ -244,11 +346,22 @@ router.post(
 
 // Helper: can student start test?
 async function canStudentStart(testSet, student) {
+  // If no startTime, test is always available
   if (!testSet.startTime) return true;
+  
   const now = new Date();
-  const tenMinBefore = new Date(testSet.startTime.getTime() - 10 * 60 * 1000);
+  const startTime = new Date(testSet.startTime);
+  
+  // Allow access 10 minutes before scheduled time
+  const tenMinBefore = new Date(startTime.getTime() - 10 * 60 * 1000);
   if (now < tenMinBefore) return false;
-  if (testSet.endTime && now > testSet.endTime) return false;
+  
+  // Check if test has ended
+  if (testSet.endTime) {
+    const endTime = new Date(testSet.endTime);
+    if (now > endTime) return false;
+  }
+  
   return true;
 }
 
@@ -260,11 +373,349 @@ router.get('/tests/:id', protect, restrictTo(['student']), async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ message: 'Invalid test id' });
   }
-  const test = await TestSet.findById(id).lean();
-  if (!test) return res.status(404).json({ message: 'Test not found' });
-  res.json(test);
+  
+  try {
+    const test = await TestSet.findById(id).lean();
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+
+    // Check for existing attempts (optimized with lean())
+    const existingAttempt = await TestAttempt.findOne({
+      student: req.user._id,
+      testSet: id,
+      status: { $in: ['completed', 'abandoned', 'violation_exit'] }
+    }).sort({ attemptNumber: -1 }).lean();
+
+    // Check if student has completed this test already (optimized with lean())
+    const completedSubmission = await Submission.findOne({
+      student: req.user._id,
+      testSet: id,
+      status: { $in: ['graded', 'pending'] }
+    }).lean();
+
+    let canAttempt = true;
+    let attemptInfo = null;
+
+    if (existingAttempt && !existingAttempt.isRetryAllowed) {
+      canAttempt = false;
+      attemptInfo = {
+        hasAttempted: true,
+        lastAttemptStatus: existingAttempt.status,
+        lastAttemptDate: existingAttempt.completedAt || existingAttempt.createdAt,
+        exitReason: existingAttempt.exitReason,
+        canRetry: false,
+        message: 'You have already attempted this test. Contact admin if you need to retake it.'
+      };
+    } else if (completedSubmission && !existingAttempt?.isRetryAllowed) {
+      canAttempt = false;
+      attemptInfo = {
+        hasAttempted: true,
+        lastAttemptStatus: 'completed',
+        lastAttemptDate: completedSubmission.createdAt,
+        canRetry: false,
+        submissionId: completedSubmission._id,
+        message: 'You have already completed this test.'
+      };
+    }
+
+    res.json({
+      ...test,
+      canAttempt,
+      attemptInfo
+    });
+  } catch (err) {
+    console.error('[GET /student/tests/:id] error:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
 });
 
+// POST /api/student/tests/:id/start - Start a test attempt
+router.post('/tests/:id/start', protect, restrictTo(['student']), async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ message: 'Invalid test id' });
+  }
+
+  try {
+    const test = await TestSet.findById(id);
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+
+    // Use findOneAndUpdate with upsert for atomic operation
+    let newAttempt;
+    let attemptNumber = 1;
+    
+    // First check if there's already an ongoing attempt
+    const ongoingAttempt = await TestAttempt.findOne({
+      student: req.user._id,
+      testSet: id,
+      status: 'started'
+    });
+
+    if (ongoingAttempt) {
+      // Check if the attempt is still valid (not timed out)
+      const TestSet = require('../models/TestSet');
+      const testSet = await TestSet.findById(id);
+      const timeElapsed = Math.floor((new Date() - ongoingAttempt.startTime) / 1000);
+      const timeLimit = testSet?.timeLimit * 60 || 3600; // Default 1 hour if not specified
+      
+      if (timeElapsed >= timeLimit) {
+        // Auto-submit the expired attempt
+        ongoingAttempt.status = 'completed';
+        ongoingAttempt.endTime = new Date();
+        await ongoingAttempt.save();
+        
+        console.log(`Auto-submitted expired attempt ${ongoingAttempt._id}`);
+      } else {
+        // Return existing attempt data so frontend can resume
+        return res.status(200).json({ 
+          message: 'Test attempt resumed',
+          data: {
+            attemptId: ongoingAttempt._id,
+            attemptNumber: ongoingAttempt.attemptNumber,
+            startedAt: ongoingAttempt.startTime,
+            timeElapsed: timeElapsed,
+            timeRemaining: Math.max(0, timeLimit - timeElapsed)
+          },
+          existingAttempt: {
+            attemptId: ongoingAttempt._id,
+            attemptNumber: ongoingAttempt.attemptNumber,
+            startedAt: ongoingAttempt.startTime
+          }
+        });
+      }
+    }
+
+    // Check if student has completed test and is not allowed retry
+    const completedAttempt = await TestAttempt.findOne({
+      student: req.user._id,
+      testSet: id,
+      status: { $in: ['completed', 'abandoned', 'violation_exit'] }
+    });
+
+    // Enhanced reattempt blocking - check ExamSecurity for lockdown status
+    if (completedAttempt) {
+      // Check exam security lockdown status
+      const ExamSecurity = require('../models/ExamSecurity');
+      const examSecurity = await ExamSecurity.findOne({
+        testAttempt: completedAttempt._id,
+        student: req.user._id
+      });
+
+      // Check post-exam security lockdown
+      if (examSecurity?.postExamSecurity?.reattemptBlocked) {
+        return res.status(403).json({ 
+          message: 'This exam has been secured and locked. No further attempts are allowed.',
+          code: 'EXAM_LOCKED',
+          lockTimestamp: examSecurity.postExamSecurity.lockTimestamp
+        });
+      }
+
+      // Legacy check for retry permission
+      if (!completedAttempt.isRetryAllowed) {
+        return res.status(400).json({ 
+          message: 'You have already attempted this test. Contact admin for retry permission.',
+          code: 'RETRY_NOT_ALLOWED'
+        });
+      }
+    }
+
+    // Get attempt number
+    const lastAttempt = await TestAttempt.findOne({
+      student: req.user._id,
+      testSet: id
+    }).sort({ attemptNumber: -1 });
+
+    attemptNumber = lastAttempt ? lastAttempt.attemptNumber + 1 : 1;
+
+    // Create new attempt with atomic operation
+    newAttempt = new TestAttempt({
+      student: req.user._id,
+      testSet: id,
+      attemptNumber,
+      status: 'started',
+      startedAt: new Date()
+    });
+
+    await newAttempt.save();
+
+    res.json({
+      message: 'Test attempt started',
+      attemptId: newAttempt._id,
+      attemptNumber: newAttempt.attemptNumber,
+      startedAt: newAttempt.startedAt
+    });
+
+  } catch (err) {
+    console.error('[POST /student/tests/:id/start] error:', err);
+    
+    // Handle duplicate key error (race condition)
+    if (err.code === 11000) {
+      return res.status(400).json({ 
+        message: 'Test attempt already in progress. Please refresh and try again.' 
+      });
+    }
+    
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/student/tests/:id/attempts - Get attempt history and lockdown status
+router.get('/tests/:id/attempts', protect, restrictTo(['student']), async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ message: 'Invalid test id' });
+  }
+
+  try {
+    const attempts = await TestAttempt.find({
+      student: req.user._id,
+      testSet: id
+    }).sort({ attemptNumber: -1 }).lean();
+
+    if (!attempts.length) {
+      return res.json({
+        hasAttempts: false,
+        hasCompletedAttempt: false,
+        reattemptBlocked: false,
+        attempts: []
+      });
+    }
+
+    // Check for completed attempt and exam security lockdown
+    const completedAttempt = attempts.find(a => 
+      a.status === 'completed' || a.status === 'abandoned' || a.status === 'violation_exit'
+    );
+
+    let reattemptBlocked = false;
+    let lockTimestamp = null;
+
+    if (completedAttempt) {
+      const ExamSecurity = require('../models/ExamSecurity');
+      const examSecurity = await ExamSecurity.findOne({
+        testAttempt: completedAttempt._id,
+        student: req.user._id
+      });
+
+      if (examSecurity?.postExamSecurity?.reattemptBlocked) {
+        reattemptBlocked = true;
+        lockTimestamp = examSecurity.postExamSecurity.lockTimestamp;
+      }
+    }
+
+    res.json({
+      hasAttempts: true,
+      hasCompletedAttempt: !!completedAttempt,
+      reattemptBlocked,
+      lockTimestamp,
+      completedAt: completedAttempt?.completedAt || null,
+      attempts: attempts.map(a => ({
+        _id: a._id,
+        attemptNumber: a.attemptNumber,
+        status: a.status,
+        startedAt: a.startedAt,
+        completedAt: a.completedAt,
+        isRetryAllowed: a.isRetryAllowed
+      }))
+    });
+
+  } catch (err) {
+    console.error('[GET /student/tests/:id/attempts] error:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST /api/student/tests/:id/end - End a test attempt
+router.post('/tests/:id/end', protect, restrictTo(['student']), async (req, res) => {
+  const { id } = req.params;
+  const { reason, submissionId, violations } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ message: 'Invalid test id' });
+  }
+
+  try {
+    const attempt = await TestAttempt.findOne({
+      student: req.user._id,
+      testSet: id,
+      status: 'started'
+    }).sort({ createdAt: -1 });
+
+    if (!attempt) {
+      return res.status(404).json({ message: 'No active test attempt found' });
+    }
+
+    // Validate reason
+    const validReasons = ['completed', 'fullscreen_exit', 'tab_switch', 'time_expired', 'violation', 'manual_exit'];
+    if (reason && !validReasons.includes(reason)) {
+      return res.status(400).json({ message: 'Invalid exit reason' });
+    }
+
+    const statusMap = {
+      'completed': 'completed',
+      'fullscreen_exit': 'violation_exit',
+      'tab_switch': 'violation_exit', 
+      'time_expired': 'completed',
+      'violation': 'violation_exit',
+      'manual_exit': 'abandoned'
+    };
+
+    attempt.status = statusMap[reason] || 'abandoned';
+    attempt.exitReason = reason;
+    attempt.completedAt = new Date();
+    
+    // Add violations to the attempt record if provided
+    if (violations && Array.isArray(violations) && violations.length > 0) {
+      attempt.violations = violations.map(v => ({
+        type: v.type,
+        timestamp: new Date(v.timestamp || Date.now()),
+        details: v.details || ''
+      }));
+    }
+    
+    if (submissionId && mongoose.Types.ObjectId.isValid(submissionId)) {
+      attempt.submissionId = submissionId;
+    }
+
+    await attempt.save();
+
+    res.json({
+      message: 'Test attempt ended',
+      status: attempt.status,
+      reason: attempt.exitReason
+    });
+
+  } catch (err) {
+    console.error('[POST /student/tests/:id/end] error:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST /api/student/tests/:id/violation - Log a violation
+router.post('/tests/:id/violation', protect, restrictTo(['student']), async (req, res) => {
+  const { id } = req.params;
+  const { type, details } = req.body;
+
+  try {
+    const attempt = await TestAttempt.findOne({
+      student: req.user._id,
+      testSet: id,
+      status: 'started'
+    }).sort({ createdAt: -1 });
+
+    if (attempt) {
+      attempt.violations.push({
+        type,
+        details,
+        timestamp: new Date()
+      });
+      await attempt.save();
+    }
+
+    res.json({ message: 'Violation logged' });
+  } catch (err) {
+    console.error('[POST /student/tests/:id/violation] error:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
 
 
 // POST /api/student/submit/:testId/:skill 
@@ -538,5 +989,72 @@ router.get('/submissions/:id', protect, restrictTo(['student']), async (req, res
   }
 }
 );
+
+// Cleanup stale test attempts endpoint
+router.post('/tests/:id/cleanup', protect, restrictTo(['student']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    // Find any stale attempts (started more than 6 hours ago)
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    
+    const staleAttempts = await TestAttempt.find({
+      student: userId,
+      testSet: id,
+      status: 'started',
+      startTime: { $lt: sixHoursAgo }
+    });
+
+    if (staleAttempts.length > 0) {
+      // Mark as abandoned
+      await TestAttempt.updateMany(
+        {
+          student: userId,
+          testSet: id,
+          status: 'started',
+          startTime: { $lt: sixHoursAgo }
+        },
+        {
+          status: 'abandoned',
+          endTime: new Date()
+        }
+      );
+
+      // Also clean up associated device sessions
+      const DeviceSession = require('../models/DeviceSession');
+      await DeviceSession.updateMany(
+        {
+          user: userId,
+          testSet: id,
+          status: 'active'
+        },
+        {
+          status: 'terminated',
+          terminationReason: 'cleanup'
+        }
+      );
+
+      res.json({
+        success: true,
+        message: `Cleaned up ${staleAttempts.length} stale attempt(s)`,
+        cleanedAttempts: staleAttempts.length
+      });
+    } else {
+      res.json({
+        success: true,
+        message: 'No stale attempts found',
+        cleanedAttempts: 0
+      });
+    }
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cleanup stale attempts',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
 
 module.exports = router;
