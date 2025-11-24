@@ -103,40 +103,62 @@ export function ViolationWarningDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
-            <AlertTriangle 
-              className={`h-6 w-6 ${isCritical ? 'text-red-500' : 'text-yellow-500'}`}
+            <AlertTriangle
+              className={`h-6 w-6 ${
+                isCritical ? "text-red-500" : "text-yellow-500"
+              }`}
             />
-            <DialogTitle className={`text-lg font-semibold ${isCritical ? 'text-red-700' : 'text-yellow-700'}`}>
+            <DialogTitle
+              className={`text-lg font-semibold ${
+                isCritical ? "text-red-700" : "text-yellow-700"
+              }`}
+            >
               🚨 FINAL WARNING
             </DialogTitle>
           </div>
-          <DialogDescription className="text-gray-700 space-y-3">
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <h4 className="font-medium text-red-800 mb-1">{violation.title}</h4>
-              <p className="text-sm text-red-700">{violation.description}</p>
-            </div>
-            
-            <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
-              <p className="text-sm text-orange-800 font-medium">
-                ⚠️ Your exam will be automatically submitted if you continue this behavior.
-              </p>
-              <p className="text-sm text-orange-700 mt-1">
-                You have reached the maximum number of warnings for this type of violation.
-              </p>
-            </div>
 
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>What happens next:</strong>
-              </p>
-              <ul className="text-sm text-blue-700 mt-1 space-y-1">
-                <li>• Return to exam: Continue your test safely</li>
-                <li>• Proceed anyway: Your exam will be submitted immediately</li>
-                <li>• Auto-submit in 10 seconds if no action is taken</li>
-              </ul>
-            </div>
+          {/* Keep DialogDescription simple text only (no divs/h4/ul inside) */}
+          <DialogDescription className="text-gray-700">
+            {violation.description}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Detailed panels outside DialogDescription to avoid <p> nesting issues */}
+        <div className="mt-4 space-y-3">
+          {/* Red panel */}
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+            <h4 className="font-medium text-red-800 mb-1">
+              {violation.title}
+            </h4>
+            <p className="text-sm text-red-700">
+              {violation.description}
+            </p>
+          </div>
+
+          {/* Orange panel */}
+          <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <p className="text-sm text-orange-800 font-medium">
+              ⚠️ Your exam will be automatically submitted if you continue this
+              behavior.
+            </p>
+            <p className="text-sm text-orange-700 mt-1">
+              You have reached the maximum number of warnings for this type of
+              violation.
+            </p>
+          </div>
+
+          {/* Blue panel */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800 font-semibold">
+              What happens next:
+            </p>
+            <ul className="text-sm text-blue-700 mt-1 space-y-1 list-disc list-inside">
+              <li>Return to exam: Continue your test safely</li>
+              <li>Proceed anyway: Your exam will be submitted immediately</li>
+              <li>Auto-submit in 10 seconds if no action is taken</li>
+            </ul>
+          </div>
+        </div>
 
         <div className="flex gap-3 mt-6">
           <Button
@@ -146,7 +168,7 @@ export function ViolationWarningDialog({
             <ArrowLeft className="w-4 h-4 mr-2" />
             Return to Exam
           </Button>
-          
+
           <Button
             onClick={onProceedWithViolation}
             variant="destructive"

@@ -107,7 +107,9 @@ export function ViolationDialog({ type, onClose }: ViolationDialogProps) {
               <div className="text-red-600 font-semibold text-lg">
                 CRITICAL VIOLATION DETECTED
               </div>
-              <div>You attempted to copy, cut, or paste content multiple times after warnings.</div>
+              <div>
+                You attempted to copy, cut, or paste content multiple times after warnings.
+              </div>
               <div className="bg-red-50 p-4 rounded-lg border border-red-200">
                 <div className="font-semibold text-red-700">
                   This is a critical violation.
@@ -132,7 +134,9 @@ export function ViolationDialog({ type, onClose }: ViolationDialogProps) {
               <div className="text-red-600 font-semibold text-lg">
                 CRITICAL VIOLATION DETECTED
               </div>
-              <div>You attempted to open a new tab, window, or incognito session.</div>
+              <div>
+                You attempted to open a new tab, window, or incognito session.
+              </div>
               <div className="bg-red-50 p-4 rounded-lg border border-red-200">
                 <div className="font-semibold text-red-700">
                   Browser navigation outside the exam is prohibited.
@@ -175,7 +179,6 @@ export function ViolationDialog({ type, onClose }: ViolationDialogProps) {
   };
 
   const content = getDialogContent();
-
   if (!content) return null;
 
   return (
@@ -188,7 +191,7 @@ export function ViolationDialog({ type, onClose }: ViolationDialogProps) {
           <AlertDialogTitle className="text-center text-xl">
             {content.title}
           </AlertDialogTitle>
-          <div className="text-center text-muted-foreground text-sm">
+          <div className="text-center text-muted-foreground text-sm mt-2">
             {content.description}
           </div>
         </AlertDialogHeader>
