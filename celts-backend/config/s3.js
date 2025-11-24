@@ -75,6 +75,5 @@ module.exports = {
   uploadToS3,
   deleteFromS3,
   getSignedUrl,
-  BUCKET_NAME,
-  isS3Configured
+  BUCKET_NAME
 };
