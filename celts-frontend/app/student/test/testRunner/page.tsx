@@ -167,11 +167,11 @@ export default function TestRunnerPage() {
       const createDeviceSession = async () => {
         try {
           console.log('Creating device session for test:', testId);
-          
+
           // Check if user is authenticated first
           const authToken = localStorage.getItem('celts_token');
           console.log('Authentication token present:', !!authToken);
-          
+
           if (!authToken) {
             console.error('No authentication token found');
             toast.error('Authentication Required', {
@@ -180,7 +180,7 @@ export default function TestRunnerPage() {
             });
             return;
           }
-          
+
           // Try to decode the token to check if it's valid (just basic check)
           try {
             const tokenParts = authToken.split('.');
@@ -190,7 +190,7 @@ export default function TestRunnerPage() {
               console.log('Token expires at:', new Date(payload.exp * 1000));
               console.log('Current time:', new Date(currentTime * 1000));
               console.log('Token valid:', payload.exp > currentTime);
-              
+
               if (payload.exp <= currentTime) {
                 console.error('Token has expired');
                 toast.error('Session Expired', {
@@ -203,15 +203,15 @@ export default function TestRunnerPage() {
           } catch (tokenError) {
             console.error('Error parsing token:', tokenError);
           }
-          
+
           // Test authentication by making a simple API call first
           console.log('Testing authentication...');
           const authTestResponse = await api.apiGet('/student/tests');
           console.log('Auth test response:', authTestResponse);
-          
+
           if (!authTestResponse.ok) {
             console.error('Authentication test failed:', authTestResponse);
-            
+
             if (authTestResponse.status === 401) {
               localStorage.removeItem('celts_token');
               toast.error('Authentication Failed', {
@@ -229,9 +229,9 @@ export default function TestRunnerPage() {
             }
             return;
           }
-          
+
           console.log('Authentication verified, proceeding with device session creation...');
-          
+
           const response = await api.apiPost('/security/session/start', {
             testId: testId,
             platform: navigator.platform,
@@ -261,11 +261,11 @@ export default function TestRunnerPage() {
             console.error('Response status:', response.status);
             console.error('Response error:', response.error);
             console.error('Response data:', response.data);
-            
+
             // Handle specific error cases
             let errorMessage = 'Unknown error';
             let shouldRedirectToLogin = false;
-            
+
             if (response.status === 401) {
               shouldRedirectToLogin = true;
               errorMessage = response.error?.message || response.data?.message || 'Authentication failed';
@@ -276,15 +276,15 @@ export default function TestRunnerPage() {
             } else {
               errorMessage = response.error?.message || response.data?.message || `Server error (${response.status})`;
             }
-            
+
             const statusCode = response.status || 'unknown';
-            
+
             if (shouldRedirectToLogin) {
               toast.error('Authentication Failed', {
                 description: `${errorMessage}. Redirecting to login...`,
                 duration: 5000,
               });
-              
+
               // Clear stored token and redirect after a delay
               localStorage.removeItem('celts_token');
               setTimeout(() => {
@@ -320,7 +320,7 @@ export default function TestRunnerPage() {
       return;
     }
 
-   
+
 
     // Log violation if we have an attempt ID
     if (attemptId) {
@@ -347,7 +347,7 @@ export default function TestRunnerPage() {
 
     // Exit fullscreen
     if (document.fullscreenElement) {
-      await document.exitFullscreen().catch(() => {});
+      await document.exitFullscreen().catch(() => { });
     }
 
     // Redirect to completion page
@@ -362,18 +362,18 @@ export default function TestRunnerPage() {
 
   const hasSubmittedRef = useRef(false);
   const autoSubmitCalledRef = useRef(false);
-  
+
   const handleAutoSubmit = async () => {
     if (hasSubmittedRef.current) return;
-    
+
     console.log('Auto-submit triggered - setting submission states');
     setIsAutoSubmitting(true);
     setIsSubmissionInProgress(true);
     setIsTestCompromised(true);
     setViolationMessage('Security violation detected. Test being auto-submitted.');
     hasSubmittedRef.current = true;
-  
-    
+
+
     // Force submit the test
     if (submitFunctionRef.current) {
       await submitFunctionRef.current(true);
@@ -388,15 +388,15 @@ export default function TestRunnerPage() {
       console.log(`Skipping violation ${violationType} during submission:`, details);
       return;
     }
-    
+
     console.warn(`Security violation: ${violationType} - ${details}`);
-    
+
     // Immediately compromise test for critical violations
     const criticalViolations = ['multiple_monitors', 'tab_switch', 'window_blur', 'fullscreen_exit'];
     if (criticalViolations.includes(violationType)) {
       setIsTestCompromised(true);
       setViolationMessage(`Critical violation: ${details}`);
-      
+
       // Show immediate warning
       toast.error('Test Compromised', {
         description: `Security violation detected: ${details}`,
@@ -411,18 +411,18 @@ export default function TestRunnerPage() {
       console.log(`Skipping critical violation ${violationType} during submission:`, details);
       return;
     }
-    
+
     console.error(`Critical security violation: ${violationType} - ${details}`);
-    
+
     setIsTestCompromised(true);
     setViolationMessage(`Critical violation: ${details}`);
-    
+
     if (!isAutoSubmitting && !isSubmissionInProgress) {
       toast.error('🚨 Critical Security Violation', {
         description: `${details}. Your test is being auto-submitted immediately.`,
         duration: 8000,
       });
-      
+
       // Trigger auto-submit
       setTimeout(() => {
         handleAutoSubmit();
@@ -435,7 +435,7 @@ export default function TestRunnerPage() {
     testId: testId || undefined,
     enabled: !!testId && !!test && hasStarted && deviceSessionCreated && !submitting && !isSubmissionInProgress && !isAutoSubmitting,
     autoSubmitOnViolation: true,
-    warningsBeforeAutoSubmit: 2, 
+    warningsBeforeAutoSubmit: 2,
     sessionToken,
     attemptId: attemptId || undefined,
     isSubmissionInProgress,
@@ -451,7 +451,7 @@ export default function TestRunnerPage() {
     if (test?.timeLimitMinutes && hasStarted && !isAutoSubmitting) {
       const warningThresholds = [5, 10, 15, 30];
       const totalMinutes = test.timeLimitMinutes;
-      
+
       warningThresholds.forEach(threshold => {
         if (timeRemaining && timeRemaining > 0) {
           const minutesLeft = Math.floor(timeRemaining / 60);
@@ -497,13 +497,13 @@ export default function TestRunnerPage() {
         e.returnValue = '';
       }
     };
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
+
     // cleanup on unmount
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      
+
       stopAnyRecording();
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -511,7 +511,7 @@ export default function TestRunnerPage() {
       }
       // Exit fullscreen on unmount
       if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
+        document.exitFullscreen().catch(() => { });
       }
       // Clear timer
       if (timerIntervalRef.current) {
@@ -583,7 +583,7 @@ export default function TestRunnerPage() {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     if (hours > 0) {
       return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
@@ -604,7 +604,7 @@ export default function TestRunnerPage() {
   const handleStartTest = async () => {
     console.log("Starting test...");
     setStartAttempting(true);
-    
+
     // Request microphone permission before starting test
     try {
       console.log("Requesting microphone permission...");
@@ -631,26 +631,26 @@ export default function TestRunnerPage() {
       const startRes = await api.apiPost(`/student/tests/${testId}/start`, {});
       if (!startRes.ok) {
         const errorMessage = startRes.error?.message || "Failed to start test attempt";
-        
+
         // Handle specific error cases
         if (errorMessage.includes("already in progress")) {
           // Try to recover the existing attempt
           if (startRes.data?.existingAttempt) {
             const existingAttemptId = startRes.data.existingAttempt.attemptId;
             setAttemptId(existingAttemptId);
-      setHasStarted(true);            toast.success("Resumed Test", {
+            setHasStarted(true); toast.success("Resumed Test", {
               description: "Continuing your existing test session.",
               duration: 3000,
             });
             return;
           }
-          
+
           // If no existing attempt data, try cleanup
           toast.info("Cleaning up session...", {
             description: "Attempting to resolve session conflict.",
             duration: 2000,
           });
-          
+
           try {
             await api.apiPost(`/student/tests/${testId}/cleanup`, {});
             // Retry starting the test after cleanup
@@ -678,13 +678,13 @@ export default function TestRunnerPage() {
           }, 2000);
           return;
         }
-        
+
         toast.error("Cannot start test", {
           description: errorMessage,
         });
         return;
       }
-      
+
       setAttemptId(startRes.data.attemptId);
       console.log("Test attempt started:", startRes.data);
 
@@ -721,7 +721,7 @@ export default function TestRunnerPage() {
           duration: 3000,
         });
         setHasStarted(true);
-      
+
       }
     } catch (err) {
       console.error("Fullscreen failed:", err);
@@ -736,20 +736,20 @@ export default function TestRunnerPage() {
   };
 
   const fullscreenExitCountRef = useRef(0);
-  
+
   const backgroundSubmissionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   useEffect(() => {
     if (!test || loading || !hasStarted) return;
 
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && !submitting && hasStarted && !isSubmissionInProgress && !isAutoSubmitting) {
         fullscreenExitCountRef.current += 1;
-        
+
         console.log(`Fullscreen exited - Auto-submitting test (${fullscreenExitCountRef.current} violations)`);
-        
+
         proctoring.logViolation?.('fullscreen_exit', `Fullscreen exited ${fullscreenExitCountRef.current} times`);
-        
+
         setTimeout(() => {
           if (submitFunctionRef.current) {
             submitFunctionRef.current(true);
@@ -759,7 +759,7 @@ export default function TestRunnerPage() {
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    
+
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
@@ -830,106 +830,106 @@ export default function TestRunnerPage() {
   const qKey = (q: Question, index: number) => q._id || String(index);
 
   async function startRecording(key: string, mode: SpeakingMode, recordLimit?: number) {
-  try {
-    stopAnyRecording();
+    try {
+      stopAnyRecording();
 
-    // Check if microphone permission was already granted
-    if (microphonePermission === 'denied') {
-      toast.error('Microphone Access Required', {
-        description: 'Please allow microphone access and refresh the page to record speaking responses.',
-        duration: 5000,
-      });
-      return;
-    }
-
-    const constraints =
-      mode === "video"
-        ? { video: { width: 1280, height: 720, facingMode: "user" }, audio: true }
-        : { audio: true };
-
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    mediaStreamRef.current = stream;
-    
-    // Auto-stop recording after time limit
-    if (recordLimit && recordLimit > 0) {
-      setTimeout(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-          stopRecording();
-          toast.info("Recording Time Limit Reached", {
-            description: `Maximum recording time of ${recordLimit} seconds reached.`,
-            duration: 3000,
-          });
-        }
-      }, recordLimit * 1000);
-    }
-
-    // WAIT until video element is fully mounted
-    setSpeakingState((prev) => ({
-      ...prev,
-      [key]: { ...(prev[key] || {}), recording: true, liveStream: stream },
-    }));
-
-    setTimeout(() => {
-      const video = liveVideoRef.current;
-      if (video) {
-        video.muted = true;
-        video.playsInline = true;
-        video.autoplay = true;
-
-        try {
-          video.srcObject = stream;
-        } catch {
-          (video as any).srcObject = stream;
-        }
-
-        video.onloadedmetadata = () => {
-          video.play().catch(() => {});
-        };
+      // Check if microphone permission was already granted
+      if (microphonePermission === 'denied') {
+        toast.error('Microphone Access Required', {
+          description: 'Please allow microphone access and refresh the page to record speaking responses.',
+          duration: 5000,
+        });
+        return;
       }
-    }, 150); // <<< KEY FIX (delay allows DOM to mount)
 
-    const mr = new MediaRecorder(stream);
-    mediaRecorderRef.current = mr;
-    mediaChunksRef.current = [];
+      const constraints =
+        mode === "video"
+          ? { video: { width: 1280, height: 720, facingMode: "user" }, audio: true }
+          : { audio: true };
 
-    mr.ondataavailable = (e) => {
-      if (e.data.size > 0) mediaChunksRef.current.push(e.data);
-    };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      mediaStreamRef.current = stream;
 
-    mr.onstop = () => {
-      const blob = new Blob(mediaChunksRef.current, {
-        type: mode === "video" ? "video/webm" : "audio/webm",
-      });
+      // Auto-stop recording after time limit
+      if (recordLimit && recordLimit > 0) {
+        setTimeout(() => {
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+            stopRecording();
+            toast.info("Recording Time Limit Reached", {
+              description: `Maximum recording time of ${recordLimit} seconds reached.`,
+              duration: 3000,
+            });
+          }
+        }, recordLimit * 1000);
+      }
 
-      const url = URL.createObjectURL(blob);
-      speakingBlobsRef.current[key] = blob;
-
+      // WAIT until video element is fully mounted
       setSpeakingState((prev) => ({
         ...prev,
-        [key]: { recording: false, blobUrl: url },
+        [key]: { ...(prev[key] || {}), recording: true, liveStream: stream },
       }));
 
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-        mediaStreamRef.current = null;
-      }
+      setTimeout(() => {
+        const video = liveVideoRef.current;
+        if (video) {
+          video.muted = true;
+          video.playsInline = true;
+          video.autoplay = true;
 
-      if (liveVideoRef.current) {
-        try {
-          liveVideoRef.current.srcObject = null;
-          liveVideoRef.current.pause();
-        } catch {}
-      }
-    };
+          try {
+            video.srcObject = stream;
+          } catch {
+            (video as any).srcObject = stream;
+          }
 
-    mr.start();
-  } catch (err: any) {
-    setSpeakingState((prev) => ({
-      ...prev,
-      [key]: { recording: false, error: err.message },
-    }));
+          video.onloadedmetadata = () => {
+            video.play().catch(() => { });
+          };
+        }
+      }, 150); // <<< KEY FIX (delay allows DOM to mount)
+
+      const mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      mediaChunksRef.current = [];
+
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) mediaChunksRef.current.push(e.data);
+      };
+
+      mr.onstop = () => {
+        const blob = new Blob(mediaChunksRef.current, {
+          type: mode === "video" ? "video/webm" : "audio/webm",
+        });
+
+        const url = URL.createObjectURL(blob);
+        speakingBlobsRef.current[key] = blob;
+
+        setSpeakingState((prev) => ({
+          ...prev,
+          [key]: { recording: false, blobUrl: url },
+        }));
+
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+          mediaStreamRef.current = null;
+        }
+
+        if (liveVideoRef.current) {
+          try {
+            liveVideoRef.current.srcObject = null;
+            liveVideoRef.current.pause();
+          } catch { }
+        }
+      };
+
+      mr.start();
+    } catch (err: any) {
+      setSpeakingState((prev) => ({
+        ...prev,
+        [key]: { recording: false, error: err.message },
+      }));
+    }
   }
-}
 
 
 
@@ -1047,8 +1047,8 @@ export default function TestRunnerPage() {
             </div>
             <div className="flex-1 p-6 bg-indigo-50 rounded-md">
               {sec.audioUrl ? (
-                <AudioPlayer 
-                  audioUrl={sec.audioUrl} 
+                <AudioPlayer
+                  audioUrl={sec.audioUrl}
                   playLimit={sec.listenLimit ?? 1}
                   sectionId={sec.id}
                 />
@@ -1117,7 +1117,7 @@ export default function TestRunnerPage() {
       const charCount = text.length;
       const hasWordLimit = typeof q.wordLimit === 'number' && q.wordLimit > 0;
       const hasCharLimit = typeof q.charLimit === 'number' && q.charLimit > 0;
-      
+
       const wordLimitExceeded = hasWordLimit && wordCount > q.wordLimit!;
       const charLimitExceeded = hasCharLimit && charCount > q.charLimit!;
 
@@ -1142,14 +1142,21 @@ export default function TestRunnerPage() {
             </div>
           </div>
           <textarea
-            className={`w-full min-h-[420px] border-2 rounded-md p-5 text-lg leading-relaxed resize-vertical transition-colors ${
-              wordLimitExceeded || charLimitExceeded 
-                ? 'border-red-400 focus:border-red-500' 
-                : 'border-slate-200 focus:border-indigo-400'
-            }`}
+            className={`w-full min-h-[420px] border-2 rounded-md p-5 text-lg leading-relaxed resize-vertical transition-colors ${wordLimitExceeded || charLimitExceeded
+              ? 'border-red-400 focus:border-red-500'
+              : 'border-slate-200 focus:border-indigo-400'
+              }`}
             placeholder="Type your response here..."
             value={text}
             onChange={(e) => setAnswers((p) => ({ ...p, [key]: { text: e.target.value } }))}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            autoComplete="off"
+            data-gramm="false"
+            data-enable-grammarly="false"
+            data-gramm_editor="false"
+            style={{ imeMode: 'disabled' }}
           />
           {(wordLimitExceeded || charLimitExceeded) && (
             <p className="text-sm text-red-600 mt-2">
@@ -1267,10 +1274,10 @@ export default function TestRunnerPage() {
       console.error('No test loaded');
       return;
     }
-    
+
     if (submitting) {
       console.warn('Submission already in progress');
-      return; 
+      return;
     }
 
     if (!autoSubmit && isTestCompromised) {
@@ -1283,7 +1290,7 @@ export default function TestRunnerPage() {
 
     // Immediately disable proctoring when submission process starts
     setIsSubmissionInProgress(true);
-    
+
     if (proctoring.dismissCriticalViolation) {
       proctoring.dismissCriticalViolation();
     }
@@ -1324,21 +1331,21 @@ export default function TestRunnerPage() {
         }
 
         if (!speakingBlob && !autoSubmit) {
-        
+
           console.log('Submitting speaking test without recording - user confirmed');
         }
 
         setSubmitMessage("Test submitted! Redirecting...");
-        
+
         if (document.fullscreenElement) {
-          await document.exitFullscreen().catch(() => {});
+          await document.exitFullscreen().catch(() => { });
         }
-        
+
         const params = new URLSearchParams({
           testTitle: test.title,
           testType: skill,
           autoSubmit: autoSubmit ? "true" : "false",
-          submissionId: "processing", 
+          submissionId: "processing",
         });
         router.push(`/student/test/complete?${params.toString()}`);
 
@@ -1359,7 +1366,7 @@ export default function TestRunnerPage() {
               headers: token ? { Authorization: `Bearer ${token}` } : {},
               body: form,
             });
-            
+
             // Mark test attempt as completed
             await fetch(`${API}/student/tests/${test._id}/end`, {
               method: "POST",
@@ -1373,30 +1380,30 @@ export default function TestRunnerPage() {
                 violations: [],
               }),
             });
-            
+
             console.log('Background submission completed for speaking test');
           } catch (error) {
             console.error('Background submission failed:', error);
           } finally {
             backgroundSubmissionTimeoutRef.current = null;
           }
-        }, 100); 
-        
+        }, 100);
+
         return;
       }
 
-    
+
       setSubmitMessage("Test submitted! Redirecting...");
-      
+
       if (document.fullscreenElement) {
-        await document.exitFullscreen().catch(() => {});
+        await document.exitFullscreen().catch(() => { });
       }
-      
+
       const params = new URLSearchParams({
         testTitle: test.title,
         testType: skill,
         autoSubmit: autoSubmit ? "true" : "false",
-        submissionId: "processing", 
+        submissionId: "processing",
       });
       router.push(`/student/test/complete?${params.toString()}`);
 
@@ -1406,14 +1413,14 @@ export default function TestRunnerPage() {
             response: answers,
             evaluationPayload,
           });
-          
+
           // Mark test attempt as completed
           await api.apiPost(`/student/tests/${test._id}/end`, {
             reason: autoSubmit ? "time_expired" : "completed",
             submissionId: null,
             violations: [],
           });
-          
+
           console.log('Background submission completed for', skill, 'test');
         } catch (error) {
           console.error('Background submission failed:', error);
@@ -1426,9 +1433,9 @@ export default function TestRunnerPage() {
       console.error('Submission error:', err);
       // Even on error, redirect immediately for better UX
       if (document.fullscreenElement) {
-        await document.exitFullscreen().catch(() => {});
+        await document.exitFullscreen().catch(() => { });
       }
-      
+
       const params = new URLSearchParams({
         testTitle: test?.title || "Test",
         testType: test?.type || "test",
@@ -1492,9 +1499,9 @@ export default function TestRunnerPage() {
             <AlertCircle className="w-8 h-8 text-red-600" />
           </div>
           <div className="text-red-600 text-lg font-semibold">
-            {error.includes('Test Already Completed') ? 'Test Already Completed' : 
-             error.includes('already attempted') || error.includes('already completed') ? 'Test Already Completed' : 
-             'Error Loading Test'}
+            {error.includes('Test Already Completed') ? 'Test Already Completed' :
+              error.includes('already attempted') || error.includes('already completed') ? 'Test Already Completed' :
+                'Error Loading Test'}
           </div>
           <p className="text-slate-600">{error}</p>
           {(error.includes('Test Already Completed') || error.includes('already attempted') || error.includes('already completed')) ? (
@@ -1531,21 +1538,20 @@ export default function TestRunnerPage() {
               ⚠️ This test will run in full-screen mode. Exiting full-screen or switching tabs will be recorded as a violation.
             </p>
             {microphonePermission && (
-              <div className={`text-sm p-3 rounded-md border ${
-                microphonePermission === 'granted' 
-                  ? 'bg-green-50 text-green-800 border-green-200' 
-                  : 'bg-red-50 text-red-800 border-red-200'
-              }`}>
-                {microphonePermission === 'granted' 
+              <div className={`text-sm p-3 rounded-md border ${microphonePermission === 'granted'
+                ? 'bg-green-50 text-green-800 border-green-200'
+                : 'bg-red-50 text-red-800 border-red-200'
+                }`}>
+                {microphonePermission === 'granted'
                   ? '🎤 Microphone access granted - speaking questions will work properly'
                   : '🎤 Microphone access denied - speaking questions may not work'
                 }
               </div>
             )}
           </div>
-          <Button 
-            onClick={handleStartTest} 
-            size="lg" 
+          <Button
+            onClick={handleStartTest}
+            size="lg"
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
             disabled={startAttempting}
           >
@@ -1593,14 +1599,14 @@ export default function TestRunnerPage() {
         <div className="fixed inset-0 flex items-center justify-center z-50 p-8">
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm"></div>
-          
+
           {/* Modal */}
           <div className="relative bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-slate-200">
             <div className="text-center space-y-6">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
                 <AlertCircle className="w-8 h-8 text-blue-600" />
               </div>
-              
+
               <div>
                 <h2 className="text-2xl font-bold text-slate-800 mb-2">Submit Test?</h2>
                 <div className="text-slate-600 space-y-1">
@@ -1608,9 +1614,9 @@ export default function TestRunnerPage() {
                   <p className="text-sm text-slate-500">You cannot change your answers afterwards.</p>
                 </div>
               </div>
-              
+
               <div className="flex gap-4 justify-center">
-                <Button 
+                <Button
                   onClick={() => {
                     setShowSubmissionModal(false);
                     setIsSubmissionInProgress(false); // Re-enable monitoring if user cancels
@@ -1620,7 +1626,7 @@ export default function TestRunnerPage() {
                 >
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={() => {
                     setShowSubmissionModal(false);
                     // Continue with submission immediately
@@ -1637,7 +1643,7 @@ export default function TestRunnerPage() {
       )}
 
       {/* Fullscreen Exit Warning Dialog - REMOVED: No modal should allow exit */}
-      
+
       <div className="w-screen min-h-screen bg-gradient-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
         <div className="max-w-[1200px] w-full bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden" style={{ minHeight: "80vh" }}>
           {/* Security Warning Banner */}
@@ -1649,8 +1655,8 @@ export default function TestRunnerPage() {
                   <div className="font-bold text-sm">🚨 Test Security Compromised</div>
                   <div className="text-sm">{violationMessage}</div>
                   <div className="text-xs mt-1">
-                    {isAutoSubmitting 
-                      ? "Auto-submitting test now. Please wait and do not close this window." 
+                    {isAutoSubmitting
+                      ? "Auto-submitting test now. Please wait and do not close this window."
                       : "Manual submission disabled. Test will auto-submit to prevent cheating."
                     }
                   </div>
@@ -1660,227 +1666,222 @@ export default function TestRunnerPage() {
           )}
           <div className="flex h-full">
             <div className="w-2/5 min-w-[420px] border-r border-slate-100 p-6">
-            <div className="h-full sticky top-6 flex flex-col">
-              <div className="mb-5 space-y-3">
-                {/* Enhanced Timer Display */}
-                {timeRemaining !== null && timeRemaining > 0 && (
-                  <div className={`rounded-lg p-4 border-2 ${
-                    timeRemaining <= 60 ? 'bg-red-50 border-red-300 animate-pulse' : 
-                    timeRemaining <= 300 ? 'bg-amber-50 border-amber-300' : 
-                    'bg-green-50 border-green-300'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Clock className={`w-5 h-5 ${
-                          timeRemaining <= 60 ? 'text-red-600' : 
-                          timeRemaining <= 300 ? 'text-amber-600' : 
-                          'text-green-600'
-                        }`} />
-                        <span className={`font-mono text-lg font-bold ${
-                          timeRemaining <= 60 ? 'text-red-700' : 
-                          timeRemaining <= 300 ? 'text-amber-700' : 
-                          'text-green-700'
-                        }`}>
-                          {formatTime(timeRemaining)}
+              <div className="h-full sticky top-6 flex flex-col">
+                <div className="mb-5 space-y-3">
+                  {/* Enhanced Timer Display */}
+                  {timeRemaining !== null && timeRemaining > 0 && (
+                    <div className={`rounded-lg p-4 border-2 ${timeRemaining <= 60 ? 'bg-red-50 border-red-300 animate-pulse' :
+                      timeRemaining <= 300 ? 'bg-amber-50 border-amber-300' :
+                        'bg-green-50 border-green-300'
+                      }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Clock className={`w-5 h-5 ${timeRemaining <= 60 ? 'text-red-600' :
+                            timeRemaining <= 300 ? 'text-amber-600' :
+                              'text-green-600'
+                            }`} />
+                          <span className={`font-mono text-lg font-bold ${timeRemaining <= 60 ? 'text-red-700' :
+                            timeRemaining <= 300 ? 'text-amber-700' :
+                              'text-green-700'
+                            }`}>
+                            {formatTime(timeRemaining)}
+                          </span>
+                        </div>
+                        <span className={`text-sm font-medium ${timeRemaining <= 60 ? 'text-red-600' :
+                          timeRemaining <= 300 ? 'text-amber-600' :
+                            'text-green-600'
+                          }`}>
+                          {Math.floor(timeRemaining / 60)}min left
                         </span>
                       </div>
-                      <span className={`text-sm font-medium ${
-                        timeRemaining <= 60 ? 'text-red-600' : 
-                        timeRemaining <= 300 ? 'text-amber-600' : 
-                        'text-green-600'
-                      }`}>
-                        {Math.floor(timeRemaining / 60)}min left
-                      </span>
-                    </div>
-                    
-                    {/* Progress bar */}
-                    <div className="mt-3">
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-slate-600">Progress</span>
-                        <span className="text-slate-600">{Math.floor((1 - (timeRemaining / ((test?.timeLimitMinutes || 60) * 60))) * 100)}%</span>
-                      </div>
-                      <div className="w-full bg-slate-200 rounded-full h-2">
-                        <div 
-                          className={`h-2 rounded-full transition-all duration-1000 ${
-                            timeRemaining <= 60 ? 'bg-red-500' : 
-                            timeRemaining <= 300 ? 'bg-amber-500' : 
-                            'bg-green-500'
-                          }`}
-                          style={{ width: `${Math.floor((1 - (timeRemaining / ((test?.timeLimitMinutes || 60) * 60))) * 100)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    
-                    {timeRemaining <= 300 && (
-                      <div className={`text-xs mt-2 p-2 rounded ${
-                        timeRemaining <= 60 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        ⚠️ {timeRemaining <= 60 ? 'URGENT: Submit soon!' : 'Time running low!'}
-                      </div>
-                    )}
-                  </div>
-                )}
 
-                {/* Test Info */}
-                <div className="rounded-md p-4" style={{ background: "linear-gradient(180deg, rgba(239,246,255,1) 0%, rgba(245,243,255,1) 100%)" }}>
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-indigo-100 rounded-md">
-                      {test?.type === "reading" ? <BookOpen className="w-6 h-6 text-indigo-700" /> : test?.type === "listening" ? <Headphones className="w-6 h-6 text-indigo-700" /> : test?.type === "writing" ? <Pen className="w-6 h-6 text-indigo-700" /> : <Mic className="w-6 h-6 text-indigo-700" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs text-slate-500">Test</div>
-                      <div className="text-lg font-semibold text-slate-800 truncate">{test?.title || "Test"}</div>
-                      {typeof test?.timeLimitMinutes === "number" && test?.timeLimitMinutes > 0 && <div className="text-sm text-slate-500 mt-1">Time limit: {test?.timeLimitMinutes} minutes</div>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-auto">
-                {loading && (
-                  <div className="flex items-center justify-center h-48">
-                    <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
-                  </div>
-                )}
-
-                {error && <div className="text-red-600">{error}</div>}
-
-                {!loading && !error && test && flatQuestions.length > 0 && (
-                  <div className="space-y-6">
-                    {renderLeftForCurrent(flatQuestions[currentIndex].q)}
-                  </div>
-                )}
-
-                {!loading && !error && test && flatQuestions.length === 0 && <div className="text-slate-600">No content available.</div>}
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {/* Progress Stats */}
-                {(() => {
-                  const answered = flatQuestions.filter((item, idx) => {
-                    const key = qKey(item.q, idx);
-                    const ans = answers[key];
-                    if (item.q.questionType === "mcq") return ans?.selectedIndex !== undefined;
-                    if (item.q.questionType === "writing") return ans?.text && ans.text.trim().length > 0;
-                    if (item.q.questionType === "speaking") return !!speakingBlobsRef.current[key];
-                    return false;
-                  }).length;
-                  const total = flatQuestions.length;
-                  const percentage = total > 0 ? Math.round((answered / total) * 100) : 0;
-
-                  return (
-                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs text-slate-600">Progress</div>
-                        <div className="text-xs font-semibold text-indigo-600">
-                          {answered} / {total} answered ({percentage}%)
+                      {/* Progress bar */}
+                      <div className="mt-3">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-slate-600">Progress</span>
+                          <span className="text-slate-600">{Math.floor((1 - (timeRemaining / ((test?.timeLimitMinutes || 60) * 60))) * 100)}%</span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-1000 ${timeRemaining <= 60 ? 'bg-red-500' :
+                              timeRemaining <= 300 ? 'bg-amber-500' :
+                                'bg-green-500'
+                              }`}
+                            style={{ width: `${Math.floor((1 - (timeRemaining / ((test?.timeLimitMinutes || 60) * 60))) * 100)}%` }}
+                          ></div>
                         </div>
                       </div>
-                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                        <div 
-                          className="h-2 bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300" 
-                          style={{ width: `${percentage}%` }} 
-                        />
-                      </div>
-                    </div>
-                  );
-                })()}
 
-                {/* Current Question Indicator */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm text-slate-600">Question {flatQuestions.length ? `${currentIndex + 1} / ${flatQuestions.length}` : "0 / 0"}</div>
-                  <div className="w-40 h-2 bg-slate-200 rounded-full overflow-hidden">
-                    <div className="h-2 bg-indigo-500" style={{ width: `${flatQuestions.length ? ((currentIndex + 1) / flatQuestions.length) * 100 : 0}%` }} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="w-3/5 p-8 overflow-auto">
-            <div className="max-w-[760px] mx-auto">
-              <div className="mb-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm text-slate-500">Question</div>
-                    <div className="text-2xl font-semibold text-slate-800 mt-2">
-                      {flatQuestions[currentIndex]?.q?.questionType === "writing" || flatQuestions[currentIndex]?.q?.questionType === "speaking"
-                        ? `Task ${currentIndex + 1}`
-                        : `Q${currentIndex + 1}`}
-                    </div>
-                  </div>
-
-                  <div className="text-sm text-slate-600">
-                    Marks <div className="font-medium text-slate-700">{flatQuestions[currentIndex]?.q?.marks ?? "-"}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                {!loading && !error && test && flatQuestions.length > 0 && (
-                  <Card className="p-6 rounded-md shadow-sm border border-slate-100">
-                    {renderRightForCurrent(flatQuestions[currentIndex].q, flatQuestions[currentIndex].idx)}
-                  </Card>
-                )}
-
-                {!loading && !error && test && flatQuestions.length === 0 && <div className="text-slate-600">No questions available.</div>}
-              </div>
-
-              <div className="mt-6 sticky bottom-6 bg-white/95 backdrop-blur-sm pt-6 pb-2 -mx-6 px-6 border-t border-slate-100">
-                <div className="flex flex-col gap-4">
-                  {/* Navigation Buttons */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-2">
-                      <Button 
-                        type="button" 
-                        size="sm" 
-                        onClick={goPrev} 
-                        disabled={currentIndex === 0} 
-                        className="rounded-md bg-white border-2 border-slate-300 text-slate-800 hover:bg-slate-100 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 font-medium shadow-sm"
-                      >
-                        ← Previous
-                      </Button>
-                      <Button 
-                        type="button" 
-                        size="sm" 
-                        onClick={goNext} 
-                        disabled={currentIndex >= flatQuestions.length - 1} 
-                        className="rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 font-medium shadow-md"
-                      >
-                        Next →
-                      </Button>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      {submitMessage && (
-                        <div className="text-sm text-slate-600 bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200">
-                          {submitMessage}
+                      {timeRemaining <= 300 && (
+                        <div className={`text-xs mt-2 p-2 rounded ${timeRemaining <= 60 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                          ⚠️ {timeRemaining <= 60 ? 'URGENT: Submit soon!' : 'Time running low!'}
                         </div>
                       )}
-                      <Button 
-                        type="button" 
-                        size="sm" 
-                        onClick={() => handleSubmit()} 
-                        disabled={submitting || isTestCompromised || isAutoSubmitting} 
-                        className="rounded-md bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 font-semibold shadow-lg disabled:opacity-50"
-                      >
-                        {submitting || isAutoSubmitting ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            {isAutoSubmitting ? "Auto-Submitting..." : "Submitting..."}
-                          </>
-                        ) : isTestCompromised ? (
-                          "Submission Blocked"
-                        ) : (
-                          "Submit Test"
-                        )}
-                      </Button>
+                    </div>
+                  )}
+
+                  {/* Test Info */}
+                  <div className="rounded-md p-4" style={{ background: "linear-gradient(180deg, rgba(239,246,255,1) 0%, rgba(245,243,255,1) 100%)" }}>
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-indigo-100 rounded-md">
+                        {test?.type === "reading" ? <BookOpen className="w-6 h-6 text-indigo-700" /> : test?.type === "listening" ? <Headphones className="w-6 h-6 text-indigo-700" /> : test?.type === "writing" ? <Pen className="w-6 h-6 text-indigo-700" /> : <Mic className="w-6 h-6 text-indigo-700" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-slate-500">Test</div>
+                        <div className="text-lg font-semibold text-slate-800 truncate">{test?.title || "Test"}</div>
+                        {typeof test?.timeLimitMinutes === "number" && test?.timeLimitMinutes > 0 && <div className="text-sm text-slate-500 mt-1">Time limit: {test?.timeLimitMinutes} minutes</div>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-auto">
+                  {loading && (
+                    <div className="flex items-center justify-center h-48">
+                      <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                    </div>
+                  )}
+
+                  {error && <div className="text-red-600">{error}</div>}
+
+                  {!loading && !error && test && flatQuestions.length > 0 && (
+                    <div className="space-y-6">
+                      {renderLeftForCurrent(flatQuestions[currentIndex].q)}
+                    </div>
+                  )}
+
+                  {!loading && !error && test && flatQuestions.length === 0 && <div className="text-slate-600">No content available.</div>}
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {/* Progress Stats */}
+                  {(() => {
+                    const answered = flatQuestions.filter((item, idx) => {
+                      const key = qKey(item.q, idx);
+                      const ans = answers[key];
+                      if (item.q.questionType === "mcq") return ans?.selectedIndex !== undefined;
+                      if (item.q.questionType === "writing") return ans?.text && ans.text.trim().length > 0;
+                      if (item.q.questionType === "speaking") return !!speakingBlobsRef.current[key];
+                      return false;
+                    }).length;
+                    const total = flatQuestions.length;
+                    const percentage = total > 0 ? Math.round((answered / total) * 100) : 0;
+
+                    return (
+                      <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-xs text-slate-600">Progress</div>
+                          <div className="text-xs font-semibold text-indigo-600">
+                            {answered} / {total} answered ({percentage}%)
+                          </div>
+                        </div>
+                        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-2 bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Current Question Indicator */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-slate-600">Question {flatQuestions.length ? `${currentIndex + 1} / ${flatQuestions.length}` : "0 / 0"}</div>
+                    <div className="w-40 h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className="h-2 bg-indigo-500" style={{ width: `${flatQuestions.length ? ((currentIndex + 1) / flatQuestions.length) * 100 : 0}%` }} />
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+
+            <div className="w-3/5 p-8 overflow-auto">
+              <div className="max-w-[760px] mx-auto">
+                <div className="mb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm text-slate-500">Question</div>
+                      <div className="text-2xl font-semibold text-slate-800 mt-2">
+                        {flatQuestions[currentIndex]?.q?.questionType === "writing" || flatQuestions[currentIndex]?.q?.questionType === "speaking"
+                          ? `Task ${currentIndex + 1}`
+                          : `Q${currentIndex + 1}`}
+                      </div>
+                    </div>
+
+                    <div className="text-sm text-slate-600">
+                      Marks <div className="font-medium text-slate-700">{flatQuestions[currentIndex]?.q?.marks ?? "-"}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  {!loading && !error && test && flatQuestions.length > 0 && (
+                    <Card className="p-6 rounded-md shadow-sm border border-slate-100">
+                      {renderRightForCurrent(flatQuestions[currentIndex].q, flatQuestions[currentIndex].idx)}
+                    </Card>
+                  )}
+
+                  {!loading && !error && test && flatQuestions.length === 0 && <div className="text-slate-600">No questions available.</div>}
+                </div>
+
+                <div className="mt-6 sticky bottom-6 bg-white/95 backdrop-blur-sm pt-6 pb-2 -mx-6 px-6 border-t border-slate-100">
+                  <div className="flex flex-col gap-4">
+                    {/* Navigation Buttons */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={goPrev}
+                          disabled={currentIndex === 0}
+                          className="rounded-md bg-white border-2 border-slate-300 text-slate-800 hover:bg-slate-100 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 font-medium shadow-sm"
+                        >
+                          ← Previous
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={goNext}
+                          disabled={currentIndex >= flatQuestions.length - 1}
+                          className="rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 font-medium shadow-md"
+                        >
+                          Next →
+                        </Button>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {submitMessage && (
+                          <div className="text-sm text-slate-600 bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200">
+                            {submitMessage}
+                          </div>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleSubmit()}
+                          disabled={submitting || isTestCompromised || isAutoSubmitting}
+                          className="rounded-md bg-green-600 hover:bg-green-70 text-white! font-semibold! px-6 py-2.5 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {submitting || isAutoSubmitting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              {isAutoSubmitting ? "Auto-Submitting..." : "Submitting..."}
+                            </>
+                          ) : isTestCompromised ? (
+                            <span className="text-white!">Submission Blocked</span>
+                          ) : (
+                            <span className="text-white!">Submit Test</span>
+                          )}
+                        </Button>
+
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
