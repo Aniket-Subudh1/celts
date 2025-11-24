@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle2, Clock, FileText, AlertCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-export default function TestCompletePage() {
+function TestCompleteContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const testTitle = searchParams.get("testTitle") || "Test";
@@ -224,5 +224,13 @@ export default function TestCompletePage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+export default function TestCompletePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-center">Loading...</div></div>}>
+      <TestCompleteContent />
+    </Suspense>
   );
 }
