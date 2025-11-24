@@ -6,7 +6,7 @@ import { navItems } from "@/components/admin/NavItems";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
+import {
   Table,
   TableBody,
   TableCell,
@@ -91,6 +91,21 @@ interface Pagination {
 }
 
 export default function TestAttemptsPage() {
+
+  const [userName, setUserName] = useState<string>("")
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("celts_user")
+    if (storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser)
+        setUserName(parsed.name || "")
+      } catch (err) {
+        console.error("Error parsing user from storage:", err)
+      }
+    }
+  }, [])
+
   const [attempts, setAttempts] = useState<TestAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -149,7 +164,7 @@ export default function TestAttemptsPage() {
   // Memoize filtered attempts to prevent unnecessary recalculations
   const filteredAttempts = useMemo(() => {
     if (!debouncedSearchTerm) return attempts;
-    
+
     const searchLower = debouncedSearchTerm.toLowerCase();
     return attempts.filter(attempt =>
       attempt.student.name.toLowerCase().includes(searchLower) ||
@@ -173,10 +188,10 @@ export default function TestAttemptsPage() {
       abandoned: { variant: 'secondary' as const, icon: XCircle, color: 'gray' },
       violation_exit: { variant: 'destructive' as const, icon: AlertTriangle, color: 'red' }
     };
-    
+
     const config = variants[status];
     const Icon = config.icon;
-    
+
     return (
       <Badge variant={config.variant} className="flex items-center gap-1">
         <Icon className="w-3 h-3" />
@@ -241,12 +256,12 @@ export default function TestAttemptsPage() {
   };
 
   return (
-    <DashboardLayout navItems={navItems} sidebarHeader="Admin Panel">
+    <DashboardLayout navItems={navItems} sidebarHeader="CELTS Admin" userName= {userName}>
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Test Attempts Management</h1>
           <div className="flex items-center gap-3">
-            <Button 
+            <Button
               onClick={fetchAttempts}
               disabled={loading}
               variant="outline"
@@ -265,7 +280,7 @@ export default function TestAttemptsPage() {
               <Filter className="w-5 h-5" />
               Filters & Search
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Search Students/Tests</label>
@@ -279,7 +294,7 @@ export default function TestAttemptsPage() {
                   />
                 </div>
               </div>
-              
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
                 <Select value={filters.status} onValueChange={(value: string) => setFilters(prev => ({ ...prev, status: value, page: 1 }))}>
@@ -297,7 +312,7 @@ export default function TestAttemptsPage() {
               </div>
 
               <div className="flex items-end">
-                <Button 
+                <Button
                   onClick={() => setFilters({ studentId: '', testId: '', status: 'all', page: 1 })}
                   variant="outline"
                 >
@@ -323,7 +338,7 @@ export default function TestAttemptsPage() {
               </div>
             </div>
           </Card>
-          
+
           <Card className="p-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-green-100 rounded-lg">
@@ -337,7 +352,7 @@ export default function TestAttemptsPage() {
               </div>
             </div>
           </Card>
-          
+
           <Card className="p-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-red-100 rounded-lg">
@@ -351,7 +366,7 @@ export default function TestAttemptsPage() {
               </div>
             </div>
           </Card>
-          
+
           <Card className="p-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-purple-100 rounded-lg">
@@ -371,7 +386,7 @@ export default function TestAttemptsPage() {
         <Card className="overflow-hidden">
           <div className="p-6">
             <h3 className="text-lg font-semibold mb-4">Test Attempts</h3>
-            
+
             {loading ? (
               <div className="flex justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -382,7 +397,7 @@ export default function TestAttemptsPage() {
                 <div className="text-center">
                   <p className="text-lg font-medium text-gray-900">Failed to load test attempts</p>
                   <p className="text-sm text-gray-500 mt-1">{error}</p>
-                  <Button 
+                  <Button
                     className="mt-4"
                     onClick={fetchAttempts}
                     variant="outline"
@@ -407,112 +422,112 @@ export default function TestAttemptsPage() {
                         <TableHead className="min-w-[140px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
-                  <TableBody>
-                    {filteredAttempts.map((attempt) => (
-                      <TableRow key={attempt._id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{attempt.student.name}</div>
-                            <div className="text-sm text-gray-500">{attempt.student.email}</div>
-                            {attempt.student.systemId && (
-                              <div className="text-xs text-gray-400">ID: {attempt.student.systemId}</div>
-                            )}
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{attempt.testSet.title}</div>
-                            <div className="text-sm text-gray-500 capitalize">{attempt.testSet.type}</div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <Badge variant="outline">#{attempt.attemptNumber}</Badge>
-                        </TableCell>
-                        
-                        <TableCell>
-                          {getStatusBadge(attempt.status)}
-                          {attempt.exitReason && (
-                            <div className="text-xs text-gray-500 mt-1">{attempt.exitReason}</div>
-                          )}
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="text-sm">
-                            {new Date(attempt.startedAt).toLocaleDateString()}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(attempt.startedAt).toLocaleTimeString()}
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {attempt.violations.length > 0 ? (
-                              <Badge variant="destructive">{attempt.violations.length}</Badge>
-                            ) : (
-                              <Badge variant="outline">0</Badge>
-                            )}
-                            {attempt.violations.length > 0 && (
-                              <details className="text-xs">
-                                <summary className="cursor-pointer text-blue-600">View</summary>
-                                <div className="mt-2 space-y-1 p-2 bg-gray-50 rounded">
-                                  {attempt.violations.slice(0, 3).map((violation, i) => (
-                                    <div key={i} className="text-xs">
-                                      <span className="font-medium">{violation.type}:</span> {violation.details}
-                                    </div>
-                                  ))}
-                                  {attempt.violations.length > 3 && (
-                                    <div className="text-xs text-gray-500">
-                                      +{attempt.violations.length - 3} more
-                                    </div>
-                                  )}
-                                </div>
-                              </details>
-                            )}
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          {attempt.isRetryAllowed ? (
+                    <TableBody>
+                      {filteredAttempts.map((attempt) => (
+                        <TableRow key={attempt._id}>
+                          <TableCell>
                             <div>
-                              <Badge className="bg-green-100 text-green-800">Allowed</Badge>
-                              {attempt.retryAllowedBy && (
-                                <div className="text-xs text-gray-500 mt-1">
-                                  By: {attempt.retryAllowedBy.name}
-                                </div>
+                              <div className="font-medium">{attempt.student.name}</div>
+                              <div className="text-sm text-gray-500">{attempt.student.email}</div>
+                              {attempt.student.systemId && (
+                                <div className="text-xs text-gray-400">ID: {attempt.student.systemId}</div>
                               )}
                             </div>
-                          ) : (
-                            <Badge variant="outline">Not Allowed</Badge>
-                          )}
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {!attempt.isRetryAllowed && attempt.status !== 'started' ? (
-                              <Button
-                                size="sm"
-                                onClick={() => setRetryDialog({ open: true, attempt })}
-                                className="bg-green-600 hover:bg-green-700"
-                              >
-                                <RotateCcw className="w-4 h-4 mr-1" />
-                                Allow Retry
-                              </Button>
-                            ) : attempt.isRetryAllowed ? (
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleRevokeRetry(attempt)}
-                              >
-                                Revoke Retry
-                              </Button>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{attempt.testSet.title}</div>
+                              <div className="text-sm text-gray-500 capitalize">{attempt.testSet.type}</div>
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <Badge variant="outline">#{attempt.attemptNumber}</Badge>
+                          </TableCell>
+
+                          <TableCell>
+                            {getStatusBadge(attempt.status)}
+                            {attempt.exitReason && (
+                              <div className="text-xs text-gray-500 mt-1">{attempt.exitReason}</div>
+                            )}
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="text-sm">
+                              {new Date(attempt.startedAt).toLocaleDateString()}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(attempt.startedAt).toLocaleTimeString()}
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {attempt.violations.length > 0 ? (
+                                <Badge variant="destructive">{attempt.violations.length}</Badge>
+                              ) : (
+                                <Badge variant="outline">0</Badge>
+                              )}
+                              {attempt.violations.length > 0 && (
+                                <details className="text-xs">
+                                  <summary className="cursor-pointer text-blue-600">View</summary>
+                                  <div className="mt-2 space-y-1 p-2 bg-gray-50 rounded">
+                                    {attempt.violations.slice(0, 3).map((violation, i) => (
+                                      <div key={i} className="text-xs">
+                                        <span className="font-medium">{violation.type}:</span> {violation.details}
+                                      </div>
+                                    ))}
+                                    {attempt.violations.length > 3 && (
+                                      <div className="text-xs text-gray-500">
+                                        +{attempt.violations.length - 3} more
+                                      </div>
+                                    )}
+                                  </div>
+                                </details>
+                              )}
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            {attempt.isRetryAllowed ? (
+                              <div>
+                                <Badge className="bg-green-100 text-green-800">Allowed</Badge>
+                                {attempt.retryAllowedBy && (
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    By: {attempt.retryAllowedBy.name}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <Badge variant="outline">Not Allowed</Badge>
+                            )}
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="flex gap-2">
+                              {!attempt.isRetryAllowed && attempt.status !== 'started' ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => setRetryDialog({ open: true, attempt })}
+                                  className="bg-green-600 hover:bg-green-700"
+                                >
+                                  <RotateCcw className="w-4 h-4 mr-1" />
+                                  Allow Retry
+                                </Button>
+                              ) : attempt.isRetryAllowed ? (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleRevokeRetry(attempt)}
+                                >
+                                  Revoke Retry
+                                </Button>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </div>                {filteredAttempts.length === 0 && !loading && !error && (
@@ -524,8 +539,8 @@ export default function TestAttemptsPage() {
                         <p className="text-sm text-gray-500">No attempts match your current search criteria.</p>
                       </div>
                       {(searchTerm || filters.status) && (
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           onClick={() => {
                             setSearchTerm('');
                             setFilters({ studentId: '', testId: '', status: '', page: 1 });
@@ -573,8 +588,8 @@ export default function TestAttemptsPage() {
         </Card>
 
         {/* Allow Retry Dialog */}
-        <Dialog 
-          open={retryDialog.open} 
+        <Dialog
+          open={retryDialog.open}
           onOpenChange={(open: boolean) => {
             if (!open) {
               setRetryDialog({ open: false, attempt: null });
@@ -589,7 +604,7 @@ export default function TestAttemptsPage() {
                 Allow {retryDialog.attempt?.student.name} to retake "{retryDialog.attempt?.testSet.title}"
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <label htmlFor="reason" className="text-sm font-medium">
@@ -603,15 +618,15 @@ export default function TestAttemptsPage() {
                   className="min-h-[100px]"
                 />
               </div>
-              
+
               <div className="flex justify-end gap-3">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setRetryDialog({ open: false, attempt: null })}
                 >
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={handleAllowRetry}
                   disabled={submitting || !retryReason.trim()}
                   className="bg-green-600 hover:bg-green-700"
