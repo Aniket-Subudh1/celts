@@ -90,6 +90,8 @@ type EvalItem =
 function AudioPlayer({ audioUrl, playLimit, sectionId }: { audioUrl: string; playLimit: number; sectionId: string }) {
   const [playCount, setPlayCount] = useState(0);
   const [canPlay, setCanPlay] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -110,13 +112,54 @@ function AudioPlayer({ audioUrl, playLimit, sectionId }: { audioUrl: string; pla
       setPlayCount(prev => prev + 1);
     };
 
+    const handleCanPlayThrough = () => {
+      setIsLoading(false);
+      setHasError(false);
+    };
+
+    const handleError = () => {
+      setIsLoading(false);
+      setHasError(true);
+      console.error('Audio loading error for:', audioUrl);
+    };
+
+    const handleLoadStart = () => {
+      setIsLoading(true);
+      setHasError(false);
+    };
+
     audio.addEventListener('play', handlePlay);
-    return () => audio.removeEventListener('play', handlePlay);
-  }, [playCount, playLimit]);
+    audio.addEventListener('canplaythrough', handleCanPlayThrough);
+    audio.addEventListener('error', handleError);
+    audio.addEventListener('loadstart', handleLoadStart);
+    
+    return () => {
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('canplaythrough', handleCanPlayThrough);
+      audio.removeEventListener('error', handleError);
+      audio.removeEventListener('loadstart', handleLoadStart);
+    };
+  }, [playCount, playLimit, audioUrl]);
 
   return (
     <div>
-      <audio ref={audioRef} controls src={audioUrl} className="w-full" />
+      {isLoading && (
+        <div className="flex items-center justify-center py-4">
+          <div className="text-slate-600">Loading audio...</div>
+        </div>
+      )}
+      {hasError && (
+        <div className="flex items-center justify-center py-4">
+          <div className="text-red-600">Failed to load audio. Please contact your instructor.</div>
+        </div>
+      )}
+      <audio 
+        ref={audioRef} 
+        controls 
+        src={audioUrl} 
+        className="w-full"
+        preload="metadata"
+      />
       <div className="mt-3 flex items-center justify-between text-sm">
         <p className="text-slate-600">
           Played: {playCount} / {playLimit}
