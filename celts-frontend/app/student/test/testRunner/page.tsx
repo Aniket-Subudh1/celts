@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { BookOpen, Headphones, Mic, Pen, Loader2, Clock, AlertCircle, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -173,6 +173,14 @@ function AudioPlayer({ audioUrl, playLimit, sectionId }: { audioUrl: string; pla
 }
 
 export default function TestRunnerPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-center">Loading test...</div></div>}>
+      <TestRunnerContent />
+    </Suspense>
+  );
+}
+
+function TestRunnerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const testId = searchParams.get("testId");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { BookOpen, FileText, Loader2 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -57,7 +57,7 @@ interface SubmissionSummary {
   createdAt?: string;
 }
 
-export default function TestScorePage() {
+function TestScoreContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const submissionId = searchParams.get("submissionId");
@@ -367,5 +367,13 @@ export default function TestScorePage() {
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function TestScorePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-center">Loading...</div></div>}>
+      <TestScoreContent />
+    </Suspense>
   );
 }

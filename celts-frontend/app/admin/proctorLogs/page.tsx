@@ -1,14 +1,29 @@
 "use client";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { navItems } from "@/components/admin/NavItems";
 import { ProctorLogsViewer } from "@/components/admin/ProctorLogsViewer";
 
-export default function AdminProctorLogsPage() {
+function ProctorLogsContent() {
   const searchParams = useSearchParams();
   const testId = searchParams.get("testId");
+
+  return (
+    <>
+      {testId ? (
+        <ProctorLogsViewer testId={testId} />
+      ) : (
+        <div className="text-center py-8 text-red-600">
+          No test ID provided. Please select a test to view proctoring logs.
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function AdminProctorLogsPage() {
   const [userName, setUserName] = useState<string>("");
 
   useEffect(() => {
@@ -25,13 +40,9 @@ export default function AdminProctorLogsPage() {
 
   return (
     <DashboardLayout navItems={navItems} sidebarHeader="CELTS Admin" userName={userName}>
-      {testId ? (
-        <ProctorLogsViewer testId={testId} />
-      ) : (
-        <div className="text-center py-8 text-red-600">
-          No test ID provided. Please select a test to view proctoring logs.
-        </div>
-      )}
+      <Suspense fallback={<div className="text-center py-8">Loading...</div>}>
+        <ProctorLogsContent />
+      </Suspense>
     </DashboardLayout>
   );
 }

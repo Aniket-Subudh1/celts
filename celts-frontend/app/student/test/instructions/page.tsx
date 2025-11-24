@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, XCircle, Eye, Monitor, Keyboard, Mouse } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
-export default function TestInstructionsPage() {
+function TestInstructionsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const testId = searchParams.get("testId");
@@ -198,5 +198,13 @@ export default function TestInstructionsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function TestInstructionsPage() {
+  return (
+    <Suspense fallback={<div className="w-screen min-h-screen bg-gradient-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center"><div className="text-center">Loading...</div></div>}>
+      <TestInstructionsContent />
+    </Suspense>
   );
 }
