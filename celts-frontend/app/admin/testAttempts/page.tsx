@@ -287,7 +287,7 @@ export default function TestAttemptsPage() {
                     <SelectValue placeholder="All Statuses" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Statuses</SelectItem>
+                    <SelectItem value="all">All Statuses</SelectItem>
                     <SelectItem value="started">Started</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="abandoned">Abandoned</SelectItem>
@@ -298,7 +298,7 @@ export default function TestAttemptsPage() {
 
               <div className="flex items-end">
                 <Button 
-                  onClick={() => setFilters({ studentId: '', testId: '', status: '', page: 1 })}
+                  onClick={() => setFilters({ studentId: '', testId: '', status: 'all', page: 1 })}
                   variant="outline"
                 >
                   Clear Filters

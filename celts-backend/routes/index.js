@@ -22,6 +22,7 @@ const studentStatsRoutes = require('./studentStats');
 const adminAuditRoutes = require("./adminAudit");
 const securityRoutes = require('./security');
 const testSecurityRoutes = require('./testSecurity');
+const testAttempts = require("../models/TestAttempt");
 
 
 // Root health check
@@ -42,6 +43,7 @@ router.use('/studentStats', studentStatsRoutes);
 router.use("/admin", adminAuditRoutes);
 router.use('/security', securityRoutes);
 router.use('/test', testSecurityRoutes); // Development/testing only
+router.use('/testAttempts', testAttempts);
 
 
 
@@ -63,7 +65,7 @@ router.get('/admin/users', protect, restrictTo(['admin']), async (req, res) => {
 
 // ADMIN: Create / Onboard user (enhanced with optional immediate assignment)
 router.post('/admin/users', protect, restrictTo(['admin']), async (req, res) => {
-  const { name, email, systemId,  password, role, canEditScores = false, assignedFaculty, cohort } = req.body;
+  const { name, email, systemId, password, role, canEditScores = false, assignedFaculty, cohort } = req.body;
   try {
     if (!name || !email || !systemId || !password) return res.status(400).json({ message: 'name, email, id and password are required' });
 
@@ -423,6 +425,270 @@ router.get("/admin/tests/:id", protect, restrictTo(["admin"]), async (req, res) 
     return res
       .status(500)
       .json({ message: "Server error fetching test set" });
+  }
+}
+);
+
+
+
+// GET /api/admin/test-attempts
+router.get("/admin/test-attempts", protect, restrictTo(["admin"]), async (req, res) => {
+  try {
+    const {
+      studentId,
+      testId,
+      status = "", // "started" | "completed" | "abandoned" | "violation_exit" | "" | "all"
+      page = 1,
+      limit = 20,
+    } = req.query;
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter = {};
+
+    if (studentId && mongoose.Types.ObjectId.isValid(studentId)) {
+      filter.student = studentId;
+    }
+
+    if (testId && mongoose.Types.ObjectId.isValid(testId)) {
+      filter.testSet = testId;
+    }
+
+    if (status && status !== "all") {
+      filter.status = status;
+    }
+
+    const [attempts, totalCount] = await Promise.all([
+      testAttempts.find(filter)
+        .sort({ startedAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .populate("student", "name email systemId")
+        .populate("testSet", "title type")
+        .populate("retryAllowedBy", "name email")
+        .lean(),
+      testAttempts.countDocuments(filter),
+    ]);
+
+    const formattedAttempts = attempts.map((a) => ({
+      _id: a._id,
+      student: {
+        _id: a.student?._id,
+        name: a.student?.name || "Unknown",
+        email: a.student?.email || "",
+        systemId: a.student?.systemId || "",
+      },
+      testSet: {
+        _id: a.testSet?._id,
+        title: a.testSet?.title || "Untitled Test",
+        type: a.testSet?.type || "",
+      },
+      attemptNumber: a.attemptNumber,
+      status: a.status,
+      startedAt: a.startedAt,
+      completedAt: a.completedAt,
+      exitReason: a.exitReason || "",
+      violations: (a.violations || []).map((v) => ({
+        type: v.type,
+        timestamp: v.timestamp,
+        details: v.details || "",
+      })),
+      isRetryAllowed: !!a.isRetryAllowed,
+      retryAllowedBy: a.retryAllowedBy
+        ? {
+          name: a.retryAllowedBy.name || "",
+          email: a.retryAllowedBy.email || "",
+        }
+        : null,
+      retryAllowedAt: a.retryAllowedAt || null,
+      retryReason: a.retryReason || "",
+      createdAt: a.createdAt,
+    }));
+
+    const totalPages = Math.max(Math.ceil(totalCount / limitNum), 1);
+
+    return res.json({
+      attempts: formattedAttempts,
+      pagination: {
+        current: pageNum,
+        total: totalPages,
+        count: totalCount,
+      },
+    });
+  } catch (err) {
+    console.error("[GET /admin/test-attempts] error:", err);
+    return res
+      .status(500)
+      .json({ message: "Server error fetching test attempts" });
+  }
+}
+);
+
+
+
+// POST /api/admin/allow-retry
+router.post("/admin/allow-retry", protect, restrictTo(["admin"]), async (req, res) => {
+  try {
+    const { studentId, testId, reason } = req.body;
+
+    if (!studentId || !testId || !reason || !reason.trim()) {
+      return res
+        .status(400)
+        .json({ message: "studentId, testId and reason are required" });
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(studentId) ||
+      !mongoose.Types.ObjectId.isValid(testId)
+    ) {
+      return res.status(400).json({ message: "Invalid studentId or testId" });
+    }
+
+    // latest attempt of that student+test
+    const attempt = await testAttempts.findOne({
+      student: studentId,
+      testSet: testId,
+    })
+      .sort({ attemptNumber: -1, createdAt: -1 })
+      .populate("student", "name email systemId")
+      .populate("testSet", "title type");
+
+    if (!attempt) {
+      return res.status(404).json({ message: "Test attempt not found" });
+    }
+
+    if (attempt.isRetryAllowed) {
+      return res
+        .status(400)
+        .json({ message: "Retry already allowed for latest attempt" });
+    }
+
+    attempt.isRetryAllowed = true;
+    attempt.retryAllowedBy = req.user._id;
+    attempt.retryAllowedAt = new Date();
+    attempt.retryReason = reason.trim();
+    await attempt.save();
+
+    // Optional audit log
+    if (AuditLog) {
+      try {
+        await AuditLog.create({
+          action: "allow_retry",
+          targetType: "testAttempts",
+          targetId: attempt._id,
+          changedBy: req.user._id,
+          meta: {
+            studentId,
+            testId,
+            attemptNumber: attempt.attemptNumber,
+            reason: attempt.retryReason,
+          },
+        });
+      } catch (logErr) {
+        console.error("[AuditLog allow_retry] error:", logErr);
+      }
+    }
+
+    return res.json({
+      message: "Retry permission granted",
+      attempt: {
+        _id: attempt._id,
+        isRetryAllowed: attempt.isRetryAllowed,
+        retryAllowedAt: attempt.retryAllowedAt,
+        retryReason: attempt.retryReason,
+      },
+    });
+  } catch (err) {
+    console.error("[POST /admin/allow-retry] error:", err);
+    return res
+      .status(500)
+      .json({ message: "Server error while allowing retry" });
+  }
+}
+);
+
+
+
+
+// POST /api/admin/revoke-retry
+router.post("/admin/revoke-retry", protect, restrictTo(["admin"]), async (req, res) => {
+  try {
+    const { studentId, testId } = req.body;
+
+    if (!studentId || !testId) {
+      return res
+        .status(400)
+        .json({ message: "studentId and testId are required" });
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(studentId) ||
+      !mongoose.Types.ObjectId.isValid(testId)
+    ) {
+      return res.status(400).json({ message: "Invalid studentId or testId" });
+    }
+
+    const attempt = await testAttempts.findOne({
+      student: studentId,
+      testSet: testId,
+      isRetryAllowed: true,
+    })
+      .sort({ attemptNumber: -1, createdAt: -1 })
+      .populate("student", "name email systemId")
+      .populate("testSet", "title type");
+
+    if (!attempt) {
+      return res.status(404).json({
+        message: "No attempt with retry allowed found for this student/test",
+      });
+    }
+
+    const prev = {
+      isRetryAllowed: attempt.isRetryAllowed,
+      retryAllowedBy: attempt.retryAllowedBy,
+      retryAllowedAt: attempt.retryAllowedAt,
+      retryReason: attempt.retryReason,
+    };
+
+    attempt.isRetryAllowed = false;
+    attempt.retryAllowedBy = null;
+    attempt.retryAllowedAt = null;
+    // keep retryReason for history (optional)
+    await attempt.save();
+
+    if (AuditLog) {
+      try {
+        await AuditLog.create({
+          action: "revoke_retry",
+          targetType: "TestAttempt",
+          targetId: attempt._id,
+          changedBy: req.user._id,
+          oldValue: prev,
+          newValue: {
+            isRetryAllowed: attempt.isRetryAllowed,
+            retryAllowedBy: attempt.retryAllowedBy,
+            retryAllowedAt: attempt.retryAllowedAt,
+            retryReason: attempt.retryReason,
+          },
+          meta: {
+            studentId,
+            testId,
+            attemptNumber: attempt.attemptNumber,
+          },
+        });
+      } catch (logErr) {
+        console.error("[AuditLog revoke_retry] error:", logErr);
+      }
+    }
+
+    return res.json({ message: "Retry permission revoked" });
+  } catch (err) {
+    console.error("[POST /admin/revoke-retry] error:", err);
+    return res
+      .status(500)
+      .json({ message: "Server error while revoking retry" });
   }
 }
 );
