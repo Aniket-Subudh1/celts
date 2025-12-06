@@ -31,7 +31,11 @@ const allowedMimes = new Set([
   "video/webm",
   "video/ogg",
   "video/quicktime", 
-  "video/x-matroska"  
+  "video/x-matroska",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif"  
 ]);
 
 // Multer storage factory 
@@ -41,7 +45,7 @@ function createUploader(destinationFolder) {
     limits: { fileSize: 20 * 1024 * 1024 }, 
     fileFilter: (req, file, cb) => {
       if (!allowedMimes.has(file.mimetype)) {
-        const err = new Error("Invalid file type. Audio & video only.");
+        const err = new Error("Invalid file type. Audio, Video and Image only.");
         err.code = "INVALID_FILE_TYPE";
         return cb(err);
       }
@@ -63,44 +67,86 @@ if (useS3) {
 }
 
 // Admin/Faculty upload 
-router.post("/upload", protect, restrictTo(["faculty", "admin"]), adminUpload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-
-    if (useS3) {
-      try {
-        const fileName = req.file.originalname || 'audio_file';
-        const s3Url = await uploadToS3(req.file.buffer, fileName, req.file.mimetype, 'audio');
-        
-        console.log('Audio uploaded to S3 successfully:', s3Url);
-        return res.json({ 
-          message: "Audio uploaded successfully to S3", 
-          url: s3Url,
-          provider: 'S3'
-        });
-      } catch (s3Error) {
-        console.error('S3 upload failed, falling back to local storage:', s3Error);
+router.post(
+  "/upload",
+  protect,
+  restrictTo(["faculty", "admin"]),
+  adminUpload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
       }
-    }
 
-    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(req.file.originalname) || '.mp3';
-    const filename = `${unique}${ext}`;
-    const filepath = path.join(adminUploadDir, filename);
-    
-    fs.writeFileSync(filepath, req.file.buffer);
-    
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/audio/${filename}`;
-    res.json({ 
-      message: "Audio uploaded successfully", 
-      url: fileUrl,
-      provider: 'local'
-    });
-  } catch (err) {
-    console.error("Admin upload error:", err);
-    res.status(500).json({ message: "Error uploading audio" });
+      const isImage = req.file.mimetype.startsWith("image/");
+      const isAudioOrVideo = !isImage;
+
+      // Decide which logical folder name to send to S3
+      const s3Folder = isImage ? "images" : "audio";
+
+      if (useS3) {
+        try {
+          const fallbackName = isImage ? "image_file" : "audio_file";
+          const fileName = req.file.originalname || fallbackName;
+
+          const s3Url = await uploadToS3(
+            req.file.buffer,
+            fileName,
+            req.file.mimetype,
+            s3Folder
+          );
+
+          console.log(
+            `${isImage ? "Image" : "Audio"} uploaded to S3 successfully:`,
+            s3Url
+          );
+
+          return res.json({
+            message: `${isImage ? "Image" : "Audio"} uploaded successfully to S3`,
+            url: s3Url,
+            provider: "S3",
+          });
+        } catch (s3Error) {
+          console.error(
+            "S3 upload failed, falling back to local storage:",
+            s3Error
+          );
+        }
+      }
+
+      // LOCAL STORAGE FALLBACK
+      const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+
+      // Use original extension if present; otherwise choose sensible default
+      let ext = path.extname(req.file.originalname);
+      if (!ext) {
+        ext = isImage ? ".jpg" : ".mp3";
+      }
+
+      const filename = `${unique}${ext}`;
+
+      // You currently only have ../uploads/audio in this file.
+      // To keep changes minimal, still store images under that path.
+      const filepath = path.join(adminUploadDir, filename);
+
+      fs.writeFileSync(filepath, req.file.buffer);
+
+      const fileUrl = `${req.protocol}://${req.get("host")}/uploads/audio/${filename}`;
+
+      return res.json({
+        message: `${isImage ? "Image" : "Audio"} uploaded successfully`,
+        url: fileUrl,
+        provider: "local",
+      });
+    } catch (err) {
+      console.error("Admin upload error:", err);
+      res
+        .status(500)
+        .json({ message: "Error uploading media (audio/image)" });
+    }
   }
-});
+);
+
 
 
 

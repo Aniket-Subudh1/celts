@@ -11,17 +11,31 @@ const QuestionSchema = new mongoose.Schema(
   {
     questionType: {
       type: String,
-      enum: ['mcq', 'writing', 'speaking'],
+      // ⬇️ added 'match'
+      enum: ['mcq', 'writing', 'speaking', 'match'],
       required: true,
     },
+
     prompt: { type: String, required: true },
+
+    // MCQ options OR match options (combinations like "a-i, b-iii, c-ii")
     options: { type: [OptionSchema], default: undefined },
+
+    // For MCQ: index of correct option
+    // For MATCH: index of correct combination option
     correctIndex: { type: Number, default: undefined },
 
     // for reading / listening section (for multi-passage / multi-audio)
     sectionId: { type: String, default: null },
 
-    // for writing
+    // ---------- MATCH THE FOLLOWING ----------
+    // leftItems: a, b, c, ...
+    // rightItems: i, ii, iii, ...
+    // frontend sends combinations in `options`
+    leftItems: { type: [String], default: undefined },
+    rightItems: { type: [String], default: undefined },
+
+    // ---------- WRITING ----------
     writingType: {
       type: String,
       enum: ['story', 'email', 'letter', 'summary', 'other'],
@@ -30,7 +44,7 @@ const QuestionSchema = new mongoose.Schema(
     wordLimit: { type: Number, default: undefined },
     charLimit: { type: Number, default: undefined },
 
-    // for speaking
+    // ---------- SPEAKING ----------
     speakingMode: {
       type: String,
       enum: ['audio', 'video', 'oral'],
@@ -38,6 +52,10 @@ const QuestionSchema = new mongoose.Schema(
     }, // oral = live answer, audio=upload/record, video=record video
     recordLimitSeconds: { type: Number, default: undefined },
     playAllowed: { type: Number, default: undefined },
+
+    // ---------- IMAGE PROMPTS (WRITING + SPEAKING) ----------
+    // frontend sends imageUrl for both writing/speaking questions
+    imageUrl: { type: String, default: null },
 
     marks: { type: Number, default: 1 },
     explanation: { type: String, default: '' },

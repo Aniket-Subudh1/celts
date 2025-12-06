@@ -418,8 +418,8 @@ export default function TestAttemptsPage() {
                         <TableHead>Status</TableHead>
                         <TableHead className="min-w-[120px]">Started</TableHead>
                         <TableHead>Violations</TableHead>
-                        <TableHead className="min-w-[120px]">Retry Status</TableHead>
-                        <TableHead className="min-w-[140px]">Actions</TableHead>
+                        {/* <TableHead className="min-w-[120px]">Retry Status</TableHead>
+                        <TableHead className="min-w-[140px]">Actions</TableHead> */}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -489,7 +489,7 @@ export default function TestAttemptsPage() {
                             </div>
                           </TableCell>
 
-                          <TableCell>
+                          {/* <TableCell>
                             {attempt.isRetryAllowed ? (
                               <div>
                                 <Badge className="bg-green-100 text-green-800">Allowed</Badge>
@@ -502,9 +502,9 @@ export default function TestAttemptsPage() {
                             ) : (
                               <Badge variant="outline">Not Allowed</Badge>
                             )}
-                          </TableCell>
+                          </TableCell> */}
 
-                          <TableCell>
+                          {/* <TableCell>
                             <div className="flex gap-2">
                               {!attempt.isRetryAllowed && attempt.status !== 'started' ? (
                                 <Button
@@ -525,7 +525,8 @@ export default function TestAttemptsPage() {
                                 </Button>
                               ) : null}
                             </div>
-                          </TableCell>
+                          </TableCell> */}
+                          
                         </TableRow>
                       ))}
                     </TableBody>

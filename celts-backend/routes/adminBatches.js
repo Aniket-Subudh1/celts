@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Batch = require('../models/Batch');
+const mongoose = require('mongoose'); 
 const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
 

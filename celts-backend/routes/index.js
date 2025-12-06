@@ -23,6 +23,10 @@ const adminAuditRoutes = require("./adminAudit");
 const securityRoutes = require('./security');
 const testSecurityRoutes = require('./testSecurity');
 const testAttempts = require("../models/TestAttempt");
+const adminUserRoutes = require('./adminUserRoutes');
+const csvuploadRoutes = require('./adminUserRoutes');
+
+
 
 
 // Root health check
@@ -44,6 +48,8 @@ router.use("/admin", adminAuditRoutes);
 router.use('/security', securityRoutes);
 router.use('/test', testSecurityRoutes); // Development/testing only
 router.use('/testAttempts', testAttempts);
+router.use('/admin/users', adminUserRoutes); 
+router.use('/admin/csv',csvuploadRoutes) 
 
 
 
