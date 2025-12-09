@@ -339,6 +339,192 @@ router.get('/submissions/:testId', protect, restrictTo(['faculty']), async (req,
   } catch (err) { return res.status(500).json({ message: err.message }); }
 });
 
+ //Faculty – get detailed StudentStats for a single student
+ //GET /api/faculty/students/:statsId/stats
+router.get( '/students/:statsId/stats', protect, restrictTo(['faculty', 'admin']), async (req, res) => {
+    const { statsId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(statsId)) {
+      return res.status(400).json({ message: 'Invalid StudentStats id' });
+    }
+
+    try {
+      const statsDoc = await StudentStats.findById(statsId).lean();
+
+      if (!statsDoc) {
+        return res.status(404).json({ message: 'Student stats not found' });
+      }
+
+      // Authorisation: faculty must own the batch; admin can see all
+      if (req.user.role === 'faculty') {
+        if (!statsDoc.batch) {
+          return res.status(403).json({ message: 'Not allowed to view this student' });
+        }
+        const ownsBatch = await Batch.exists({
+          _id: statsDoc.batch,
+          $or: [{ faculty: req.user._id }, { assignedFaculty: req.user._id }],
+        });
+        if (!ownsBatch) {
+          return res.status(403).json({ message: 'Not allowed to view this student' });
+        }
+      }
+
+      const studentId = statsDoc.student;
+
+      // Build overrideDetails just like /api/student/stats
+      const overriddenSubs = await Submission.find({
+        student: studentId,
+        isOverridden: true,
+        skill: { $in: ['writing', 'speaking'] },
+      })
+        .sort({ updatedAt: -1 })
+        .populate('overriddenBy', 'name systemId email')
+        .lean();
+
+      const overrideDetails = {};
+
+      for (const sub of overriddenSubs) {
+        const skill = sub.skill; // "writing" or "speaking"
+        if (overrideDetails[skill]) continue;
+
+        const faculty = sub.overriddenBy || {};
+
+        overrideDetails[skill] = {
+          skill,
+          oldBandScore:
+            typeof sub.originalBandScore === 'number'
+              ? sub.originalBandScore
+              : null,
+          newBandScore:
+            typeof sub.bandScore === 'number' ? sub.bandScore : null,
+          reason: sub.overrideReason || '',
+          overriddenAt: sub.updatedAt || sub.createdAt || null,
+          facultyName: faculty.name || 'Unknown',
+          facultySystemId: faculty.systemId || null,
+        };
+      }
+
+      const result = {
+        _id: statsDoc._id,
+        student: statsDoc.student,
+        name: statsDoc.name,
+        email: statsDoc.email,
+        systemId: statsDoc.systemId,
+        batch: statsDoc.batch,
+        batchName: statsDoc.batchName,
+
+        readingBand: statsDoc.readingBand,
+        listeningBand: statsDoc.listeningBand,
+        writingBand: statsDoc.writingBand,
+        speakingBand: statsDoc.speakingBand,
+        overallBand: statsDoc.overallBand,
+
+        writingExaminerSummary: statsDoc.writingExaminerSummary || null,
+        speakingExaminerSummary: statsDoc.speakingExaminerSummary || null,
+
+        overrideDetails,
+      };
+
+      return res.json(result);
+    } catch (err) {
+      console.error('[GET /faculty/students/:statsId/stats] error:', err);
+      return res.status(500).json({
+        message: 'Error fetching student stats for faculty',
+      });
+    }
+  }
+);
+
+
+
+// Faculty – get per-skill latest submission summary for a student
+// GET /api/faculty/students/:statsId/submissions/summary
+router.get( '/students/:statsId/submissions/summary', protect, restrictTo(['faculty', 'admin']), async (req, res) => {
+    const { statsId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(statsId)) {
+      return res.status(400).json({ message: 'Invalid StudentStats id' });
+    }
+
+    try {
+      const statsDoc = await StudentStats.findById(statsId).lean();
+
+      if (!statsDoc) {
+        return res.status(404).json({ message: 'Student stats not found' });
+      }
+
+      // Authorisation: faculty must own the batch; admin can see all
+      if (req.user.role === 'faculty') {
+        if (!statsDoc.batch) {
+          return res.status(403).json({ message: 'Not allowed to view this student' });
+        }
+        const ownsBatch = await Batch.exists({
+          _id: statsDoc.batch,
+          $or: [{ faculty: req.user._id }, { assignedFaculty: req.user._id }],
+        });
+        if (!ownsBatch) {
+          return res.status(403).json({ message: 'Not allowed to view this student' });
+        }
+      }
+
+      const studentId = statsDoc.student;
+
+      // Get all submissions for this student (all skills), newest first
+      const subs = await Submission.find({ student: studentId })
+        .sort({ createdAt: -1 })
+        .populate('testSet', 'title type')
+        .lean();
+
+      const latestBySkill = {};
+      for (const s of subs) {
+        if (!latestBySkill[s.skill]) {
+          latestBySkill[s.skill] = s;
+        }
+      }
+
+      const response = {};
+
+      ['reading', 'listening', 'writing', 'speaking'].forEach((skill) => {
+        const sub = latestBySkill[skill];
+        if (!sub) return;
+
+        response[skill] = {
+          skill,
+          submissionId: sub._id,
+          testId: sub.testSet?._id || null,
+          testTitle: sub.testSet?.title || null,
+          status: sub.status,
+
+          totalMarks: sub.totalMarks || 0,
+          maxMarks: sub.maxMarks || 0,
+
+          totalQuestions: sub.totalQuestions || 0,
+          attemptedCount: sub.attemptedCount || 0,
+          unattemptedCount: sub.unattemptedCount || 0,
+
+          correctCount: sub.correctCount || 0,
+          incorrectCount: sub.incorrectCount || 0,
+
+          bandScore:
+            typeof sub.bandScore === 'number' ? sub.bandScore : null,
+          createdAt: sub.createdAt || null,
+        };
+      });
+
+      return res.json(response);
+    } catch (err) {
+      console.error(
+        '[GET /faculty/students/:statsId/submissions/summary] error:',
+        err
+      );
+      return res.status(500).json({
+        message: 'Error fetching student submissions summary for faculty',
+      });
+    }
+  }
+);
+
+
 
 // PATCH /api/faculty/students/:statsId/override-band
 // Faculty can override WRITING or SPEAKING band for a student

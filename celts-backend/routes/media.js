@@ -8,7 +8,7 @@ const { isS3Url, getStorageProvider } = require("../utils/s3Utils");
 
 const router = express.Router();
 
-const adminUploadDir = path.join(__dirname, "../uploads/audio");
+const adminUploadDir = path.join(__dirname, "../uploads/files");
 const studentUploadDir = path.join(__dirname, "../uploads/studentSubmission");
 
 for (const dir of [adminUploadDir, studentUploadDir]) {
@@ -58,12 +58,12 @@ const adminUpload = createUploader(adminUploadDir);
 const studentUpload = createUploader(studentUploadDir);
 
 // Flag to determine if S3 should be used (based on environment variables)
-const useS3 = isS3Configured;
+const useS3 = true;
 
 console.log(`Media storage configured: ${useS3 ? 'Amazon S3 (Cloud)' : 'Local Server'}`);
 if (useS3) {
   console.log(`S3 Bucket: ${process.env.S3_BUCKET_NAME}`);
-  console.log(`S3 Region: ${process.env.AWS_REGION || 'us-east-1'}`);
+  console.log(`S3 Region: ${process.env.AWS_REGION || 'ap-south-1'}`);
 }
 
 // Admin/Faculty upload 
@@ -83,7 +83,7 @@ router.post(
 
       // Decide which logical folder name to send to S3
       const s3Folder = isImage ? "images" : "audio";
-
+      console.log(useS3)
       if (useS3) {
         try {
           const fallbackName = isImage ? "image_file" : "audio_file";
@@ -115,23 +115,23 @@ router.post(
       }
 
       // LOCAL STORAGE FALLBACK
-      const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      // const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
 
-      // Use original extension if present; otherwise choose sensible default
-      let ext = path.extname(req.file.originalname);
-      if (!ext) {
-        ext = isImage ? ".jpg" : ".mp3";
-      }
+      // // Use original extension if present; otherwise choose sensible default
+      // let ext = path.extname(req.file.originalname);
+      // if (!ext) {
+      //   ext = isImage ? ".jpg" : ".mp3";
+      // }
 
-      const filename = `${unique}${ext}`;
+      // const filename = `${unique}${ext}`;
 
-      // You currently only have ../uploads/audio in this file.
+      // You currently only have ../uploads/files in this file.
       // To keep changes minimal, still store images under that path.
-      const filepath = path.join(adminUploadDir, filename);
+      // const filepath = path.join(adminUploadDir, filename);
 
-      fs.writeFileSync(filepath, req.file.buffer);
+      // fs.writeFileSync(filepath, req.file.buffer);
 
-      const fileUrl = `${req.protocol}://${req.get("host")}/uploads/audio/${filename}`;
+      // const fileUrl = `${req.protocol}://${req.get("host")}/uploads//${filename}`;
 
       return res.json({
         message: `${isImage ? "Image" : "Audio"} uploaded successfully`,

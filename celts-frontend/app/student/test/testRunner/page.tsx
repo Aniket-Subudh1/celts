@@ -16,12 +16,16 @@ type TestType = "reading" | "listening" | "writing" | "speaking" | string;
 type Option = { text: string };
 type SpeakingMode = "audio" | "video" | "oral";
 
+const ROMAN = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii"];
+
 interface Question {
   _id?: string;
-  questionType: "mcq" | "writing" | "speaking";
+  questionType: "mcq" | "writing" | "speaking" | "match";
   prompt: string;
   options?: Option[];
   correctIndex?: number;
+  leftItems?: string[];
+  rightItems?: string[];
   writingType?: string;
   wordLimit?: number;
   charLimit?: number;
@@ -30,6 +34,8 @@ interface Question {
   marks?: number;
   explanation?: string;
   sectionId?: string | null;
+  imageUrl?: string;      
+  imageAlt?: string;       
 }
 
 interface ReadingSection {
@@ -104,12 +110,12 @@ function AudioPlayer({ audioUrl, playLimit, sectionId }: { audioUrl: string; pla
         audio.currentTime = 0;
         setCanPlay(false);
         toast.error("Play Limit Reached", {
-          description: `You can only play this audio ${playLimit} time${playLimit > 1 ? 's' : ''}.`,
+          description: `You can only play this audio ${playLimit} time${playLimit > 1 ? "s" : ""}.`,
           duration: 3000,
         });
         return;
       }
-      setPlayCount(prev => prev + 1);
+      setPlayCount((prev) => prev + 1);
     };
 
     const handleCanPlayThrough = () => {
@@ -120,7 +126,7 @@ function AudioPlayer({ audioUrl, playLimit, sectionId }: { audioUrl: string; pla
     const handleError = () => {
       setIsLoading(false);
       setHasError(true);
-      console.error('Audio loading error for:', audioUrl);
+      console.error("Audio loading error for:", audioUrl);
     };
 
     const handleLoadStart = () => {
@@ -128,16 +134,16 @@ function AudioPlayer({ audioUrl, playLimit, sectionId }: { audioUrl: string; pla
       setHasError(false);
     };
 
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('canplaythrough', handleCanPlayThrough);
-    audio.addEventListener('error', handleError);
-    audio.addEventListener('loadstart', handleLoadStart);
-    
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("canplaythrough", handleCanPlayThrough);
+    audio.addEventListener("error", handleError);
+    audio.addEventListener("loadstart", handleLoadStart);
+
     return () => {
-      audio.removeEventListener('play', handlePlay);
-      audio.removeEventListener('canplaythrough', handleCanPlayThrough);
-      audio.removeEventListener('error', handleError);
-      audio.removeEventListener('loadstart', handleLoadStart);
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("canplaythrough", handleCanPlayThrough);
+      audio.removeEventListener("error", handleError);
+      audio.removeEventListener("loadstart", handleLoadStart);
     };
   }, [playCount, playLimit, audioUrl]);
 
@@ -153,20 +159,12 @@ function AudioPlayer({ audioUrl, playLimit, sectionId }: { audioUrl: string; pla
           <div className="text-red-600">Failed to load audio. Please contact your instructor.</div>
         </div>
       )}
-      <audio 
-        ref={audioRef} 
-        controls 
-        src={audioUrl} 
-        className="w-full"
-        preload="metadata"
-      />
+      <audio ref={audioRef} controls src={audioUrl} className="w-full" preload="metadata" />
       <div className="mt-3 flex items-center justify-between text-sm">
         <p className="text-slate-600">
           Played: {playCount} / {playLimit}
         </p>
-        {!canPlay && (
-          <p className="text-red-600 font-medium">Limit reached</p>
-        )}
+        {!canPlay && <p className="text-red-600 font-medium">Limit reached</p>}
       </div>
     </div>
   );
@@ -174,7 +172,13 @@ function AudioPlayer({ audioUrl, playLimit, sectionId }: { audioUrl: string; pla
 
 export default function TestRunnerPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-center">Loading test...</div></div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">Loading test...</div>
+        </div>
+      }
+    >
       <TestRunnerContent />
     </Suspense>
   );
@@ -202,88 +206,82 @@ function TestRunnerContent() {
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
 
-  // Get session token safely on client side
   const [sessionToken, setSessionToken] = useState<string | undefined>(undefined);
   const [deviceSessionCreated, setDeviceSessionCreated] = useState(false);
-  const [microphonePermission, setMicrophonePermission] = useState<'granted' | 'denied' | 'prompt' | null>(null);
+  const [microphonePermission, setMicrophonePermission] = useState<"granted" | "denied" | "prompt" | null>(null);
 
-  // Timer state
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [timerWarning, setTimerWarning] = useState(false);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Create device session when component mounts
   useEffect(() => {
-    if (typeof window !== 'undefined' && testId && !deviceSessionCreated) {
+    if (typeof window !== "undefined" && testId && !deviceSessionCreated) {
       const createDeviceSession = async () => {
         try {
-          console.log('Creating device session for test:', testId);
+          console.log("Creating device session for test:", testId);
 
-          // Check if user is authenticated first
-          const authToken = localStorage.getItem('celts_token');
-          console.log('Authentication token present:', !!authToken);
+          const authToken = localStorage.getItem("celts_token");
+          console.log("Authentication token present:", !!authToken);
 
           if (!authToken) {
-            console.error('No authentication token found');
-            toast.error('Authentication Required', {
-              description: 'Please log in again to start the exam.',
+            console.error("No authentication token found");
+            toast.error("Authentication Required", {
+              description: "Please log in again to start the exam.",
               duration: 5000,
             });
             return;
           }
 
-          // Try to decode the token to check if it's valid (just basic check)
           try {
-            const tokenParts = authToken.split('.');
+            const tokenParts = authToken.split(".");
             if (tokenParts.length === 3) {
               const payload = JSON.parse(atob(tokenParts[1]));
               const currentTime = Math.floor(Date.now() / 1000);
-              console.log('Token expires at:', new Date(payload.exp * 1000));
-              console.log('Current time:', new Date(currentTime * 1000));
-              console.log('Token valid:', payload.exp > currentTime);
+              console.log("Token expires at:", new Date(payload.exp * 1000));
+              console.log("Current time:", new Date(currentTime * 1000));
+              console.log("Token valid:", payload.exp > currentTime);
 
               if (payload.exp <= currentTime) {
-                console.error('Token has expired');
-                toast.error('Session Expired', {
-                  description: 'Your session has expired. Please log in again.',
+                console.error("Token has expired");
+                toast.error("Session Expired", {
+                  description: "Your session has expired. Please log in again.",
                   duration: 5000,
                 });
                 return;
               }
             }
           } catch (tokenError) {
-            console.error('Error parsing token:', tokenError);
+            console.error("Error parsing token:", tokenError);
           }
 
-          // Test authentication by making a simple API call first
-          console.log('Testing authentication...');
-          const authTestResponse = await api.apiGet('/student/tests');
-          console.log('Auth test response:', authTestResponse);
+          console.log("Testing authentication...");
+          const authTestResponse = await api.apiGet("/student/tests");
+          console.log("Auth test response:", authTestResponse);
 
           if (!authTestResponse.ok) {
-            console.error('Authentication test failed:', authTestResponse);
+            console.error("Authentication test failed:", authTestResponse);
 
             if (authTestResponse.status === 401) {
-              localStorage.removeItem('celts_token');
-              toast.error('Authentication Failed', {
-                description: 'Your session has expired. Please log in again.',
+              localStorage.removeItem("celts_token");
+              toast.error("Authentication Failed", {
+                description: "Your session has expired. Please log in again.",
                 duration: 5000,
               });
               setTimeout(() => {
-                window.location.href = '/auth/login';
+                window.location.href = "/auth/login";
               }, 2000);
             } else {
-              toast.error('Connection Error', {
-                description: 'Unable to verify authentication. Please check your connection.',
+              toast.error("Connection Error", {
+                description: "Unable to verify authentication. Please check your connection.",
                 duration: 5000,
               });
             }
             return;
           }
 
-          console.log('Authentication verified, proceeding with device session creation...');
+          console.log("Authentication verified, proceeding with device session creation...");
 
-          const response = await api.apiPost('/security/session/start', {
+          const response = await api.apiPost("/security/session/start", {
             testId: testId,
             platform: navigator.platform,
             language: navigator.language,
@@ -293,65 +291,63 @@ function TestRunnerContent() {
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             browserFeatures: {
               webSecurity: true,
-              devToolsDisabled: false, // Will be monitored
+              devToolsDisabled: false,
               printingDisabled: true,
               downloadDisabled: true,
               copyPasteDisabled: true,
-              rightClickDisabled: true
-            }
+              rightClickDisabled: true,
+            },
           });
 
-          console.log('Device session response:', response);
+          console.log("Device session response:", response);
 
           if (response.ok && response.data?.sessionToken) {
-            console.log('Device session created successfully');
+            console.log("Device session created successfully");
             setSessionToken(response.data.sessionToken);
             setDeviceSessionCreated(true);
           } else {
-            console.error('Failed to create device session:');
-            console.error('Response status:', response.status);
-            console.error('Response error:', response.error);
-            console.error('Response data:', response.data);
+            console.error("Failed to create device session:");
+            console.error("Response status:", response.status);
+            console.error("Response error:", response.error);
+            console.error("Response data:", response.data);
 
-            // Handle specific error cases
-            let errorMessage = 'Unknown error';
+            let errorMessage = "Unknown error";
             let shouldRedirectToLogin = false;
 
             if (response.status === 401) {
               shouldRedirectToLogin = true;
-              errorMessage = response.error?.message || response.data?.message || 'Authentication failed';
+              errorMessage = response.error?.message || response.data?.message || "Authentication failed";
             } else if (response.status === 404) {
-              errorMessage = 'Test not found';
+              errorMessage = "Test not found";
             } else if (response.status === 429) {
-              errorMessage = 'Too many requests, please wait and try again';
+              errorMessage = "Too many requests, please wait and try again";
             } else {
               errorMessage = response.error?.message || response.data?.message || `Server error (${response.status})`;
             }
 
-            const statusCode = response.status || 'unknown';
+            const statusCode = response.status || "unknown";
 
             if (shouldRedirectToLogin) {
-              toast.error('Authentication Failed', {
+              toast.error("Authentication Failed", {
                 description: `${errorMessage}. Redirecting to login...`,
                 duration: 5000,
               });
 
-              // Clear stored token and redirect after a delay
-              localStorage.removeItem('celts_token');
+              localStorage.removeItem("celts_token");
               setTimeout(() => {
-                window.location.href = '/auth/login';
+                window.location.href = "/auth/login";
               }, 2000);
             } else {
-              toast.error('Session Creation Failed', {
+              toast.error("Session Creation Failed", {
                 description: `Unable to create exam session (${statusCode}): ${errorMessage}. Please refresh and try again.`,
                 duration: 7000,
               });
             }
           }
         } catch (error) {
-          console.error('Device session creation error:', error);
-          toast.error('Connection Error', {
-            description: 'Unable to establish exam session. Please check your connection and try again.',
+          console.error("Device session creation error:", error);
+          toast.error("Connection Error", {
+            description: "Unable to establish exam session. Please check your connection and try again.",
             duration: 5000,
           });
         }
@@ -361,80 +357,74 @@ function TestRunnerContent() {
     }
   }, [testId, deviceSessionCreated]);
 
-  const redirectToCompletion = useCallback(async (reason: string) => {
-    if (hasSubmittedRef.current) return;
-    hasSubmittedRef.current = true;
-
-    if (!testId) {
-      console.error('Cannot redirect to completion: testId is missing');
-      router.push('/student/dashboard');
-      return;
-    }
-
-
-
-    // Log violation if we have an attempt ID
-    if (attemptId) {
-      try {
-        await api.apiPost(`/student/tests/${testId}/violation`, {
-          type: reason,
-          details: `Student ${reason} during test`,
-        });
-      } catch (err) {
-        console.error('Failed to log violation:', err);
-      }
-
-      // End the attempt with violation data
-      try {
-        await api.apiPost(`/student/tests/${testId}/end`, {
-          reason,
-          submissionId: null,
-          violations: proctoring.violations || [],
-        });
-      } catch (err) {
-        console.error('Failed to end attempt:', err);
-      }
-    }
-
-    // Exit fullscreen
-    if (document.fullscreenElement) {
-      await document.exitFullscreen().catch(() => { });
-    }
-
-    // Redirect to completion page
-    const params = new URLSearchParams({
-      testTitle: test?.title || "Test",
-      testType: test?.type || "test",
-      autoSubmit: "true",
-      reason: reason,
-    });
-    router.push(`/student/test/complete?${params.toString()}`);
-  }, [attemptId, testId, test?.title, test?.type, router]);
-
   const hasSubmittedRef = useRef(false);
   const autoSubmitCalledRef = useRef(false);
+
+  const redirectToCompletion = useCallback(
+    async (reason: string) => {
+      if (hasSubmittedRef.current) return;
+      hasSubmittedRef.current = true;
+
+      if (!testId) {
+        console.error("Cannot redirect to completion: testId is missing");
+        router.push("/student/dashboard");
+        return;
+      }
+
+      if (attemptId) {
+        try {
+          await api.apiPost(`/student/tests/${testId}/violation`, {
+            type: reason,
+            details: `Student ${reason} during test`,
+          });
+        } catch (err) {
+          console.error("Failed to log violation:", err);
+        }
+
+        try {
+          await api.apiPost(`/student/tests/${testId}/end`, {
+            reason,
+            submissionId: null,
+            violations: proctoring.violations || [],
+          });
+        } catch (err) {
+          console.error("Failed to end attempt:", err);
+        }
+      }
+
+      if (document.fullscreenElement) {
+        await document.exitFullscreen().catch(() => { });
+      }
+
+      const params = new URLSearchParams({
+        testTitle: test?.title || "Test",
+        testType: test?.type || "test",
+        autoSubmit: "true",
+        reason: reason,
+      });
+      router.push(`/student/test/complete?${params.toString()}`);
+    },
+    [attemptId, testId, test?.title, test?.type, router]
+  );
 
   const handleAutoSubmit = async () => {
     if (hasSubmittedRef.current) return;
 
-    console.log('Auto-submit triggered - setting submission states');
+    console.log("Auto-submit triggered - setting submission states");
     setIsAutoSubmitting(true);
     setIsSubmissionInProgress(true);
     setIsTestCompromised(true);
-    setViolationMessage('Security violation detected. Test being auto-submitted.');
+    setViolationMessage("Security violation detected. Test being auto-submitted.");
     hasSubmittedRef.current = true;
 
-
-    // Force submit the test
     if (submitFunctionRef.current) {
       await submitFunctionRef.current(true);
     } else {
-      await redirectToCompletion('violation');
+      await redirectToCompletion("violation");
     }
   };
 
   const handleViolationDetected = (violationType: string, details: string) => {
-    // Skip violations during submission process
     if (submitting || isSubmissionInProgress || isAutoSubmitting) {
       console.log(`Skipping violation ${violationType} during submission:`, details);
       return;
@@ -442,14 +432,12 @@ function TestRunnerContent() {
 
     console.warn(`Security violation: ${violationType} - ${details}`);
 
-    // Immediately compromise test for critical violations
-    const criticalViolations = ['multiple_monitors', 'tab_switch', 'window_blur', 'fullscreen_exit'];
+    const criticalViolations = ["multiple_monitors", "tab_switch", "window_blur", "fullscreen_exit"];
     if (criticalViolations.includes(violationType)) {
       setIsTestCompromised(true);
       setViolationMessage(`Critical violation: ${details}`);
 
-      // Show immediate warning
-      toast.error('Test Compromised', {
+      toast.error("Test Compromised", {
         description: `Security violation detected: ${details}`,
         duration: 6000,
       });
@@ -457,7 +445,6 @@ function TestRunnerContent() {
   };
 
   const handleCriticalViolation = (violationType: string, details: string) => {
-    // Skip violations during submission process  
     if (submitting || isSubmissionInProgress || isAutoSubmitting) {
       console.log(`Skipping critical violation ${violationType} during submission:`, details);
       return;
@@ -469,22 +456,21 @@ function TestRunnerContent() {
     setViolationMessage(`Critical violation: ${details}`);
 
     if (!isAutoSubmitting && !isSubmissionInProgress) {
-      toast.error('🚨 Critical Security Violation', {
+      toast.error("Critical Security Violation", {
         description: `${details}. Your test is being auto-submitted immediately.`,
         duration: 8000,
       });
 
-      // Trigger auto-submit
       setTimeout(() => {
         handleAutoSubmit();
       }, 100);
     }
   };
 
-
   const proctoring = useTestProctoring({
     testId: testId || undefined,
-    enabled: !!testId && !!test && hasStarted && deviceSessionCreated && !submitting && !isSubmissionInProgress && !isAutoSubmitting,
+    enabled:
+      !!testId && !!test && hasStarted && deviceSessionCreated && !submitting && !isSubmissionInProgress && !isAutoSubmitting,
     autoSubmitOnViolation: true,
     warningsBeforeAutoSubmit: 2,
     sessionToken,
@@ -497,18 +483,16 @@ function TestRunnerContent() {
     enableNetworkMonitoring: true,
   });
 
-  // Timer management within proctoring
   useEffect(() => {
     if (test?.timeLimitMinutes && hasStarted && !isAutoSubmitting) {
       const warningThresholds = [5, 10, 15, 30];
-      const totalMinutes = test.timeLimitMinutes;
 
-      warningThresholds.forEach(threshold => {
+      warningThresholds.forEach((threshold) => {
         if (timeRemaining && timeRemaining > 0) {
           const minutesLeft = Math.floor(timeRemaining / 60);
           if (minutesLeft === threshold && minutesLeft > 0) {
-            toast.warning(`⏰ ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'} remaining!`, {
-              description: 'Please review your answers and prepare to submit.',
+            toast.warning(`⏰ ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"} remaining!`, {
+              description: "Please review your answers and prepare to submit.",
               duration: 5000,
             });
           }
@@ -528,63 +512,54 @@ function TestRunnerContent() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flatQuestions, setFlatQuestions] = useState<{ q: Question; idx: number }[]>([]);
 
-  // Store submit function in ref for proctoring
   useEffect(() => {
     submitFunctionRef.current = handleSubmit;
   });
 
   useEffect(() => {
     if (testId) {
-      console.log('Fetching test with ID:', testId);
+      console.log("Fetching test with ID:", testId);
       fetchTest(testId);
     }
-  }, [testId]); // Only depend on testId
+  }, [testId]);
 
   useEffect(() => {
-    // Prevent navigation away without confirmation
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (test && !submitting) {
         e.preventDefault();
-        e.returnValue = '';
+        e.returnValue = "";
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
-    // cleanup on unmount
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
 
       stopAnyRecording();
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
         mediaStreamRef.current = null;
       }
-      // Exit fullscreen on unmount
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => { });
       }
-      // Clear timer
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
-      // Clear background submission timeout
       if (backgroundSubmissionTimeoutRef.current) {
         clearTimeout(backgroundSubmissionTimeoutRef.current);
         backgroundSubmissionTimeoutRef.current = null;
       }
     };
-  }, []); // Only run once on mount
+  }, [test, submitting]);
 
-  // Timer effect
   useEffect(() => {
     if (test && test.timeLimitMinutes && test.timeLimitMinutes > 0 && hasStarted) {
-      // Initialize timer
       const totalSeconds = test.timeLimitMinutes * 60;
       setTimeRemaining(totalSeconds);
 
-      // Start countdown
       timerIntervalRef.current = setInterval(() => {
         setTimeRemaining((prev) => {
           if (prev === null || prev <= 0) {
@@ -592,7 +567,6 @@ function TestRunnerContent() {
               clearInterval(timerIntervalRef.current);
               timerIntervalRef.current = null;
             }
-            // Auto-submit when time runs out (only if not already submitting)
             if (!submitting && !autoSubmitCalledRef.current && submitFunctionRef.current) {
               autoSubmitCalledRef.current = true;
               setTimeout(() => submitFunctionRef.current!(true), 100);
@@ -600,7 +574,6 @@ function TestRunnerContent() {
             return 0;
           }
 
-          // Show warning when 5 minutes remaining
           if (prev <= 300 && !timerWarning) {
             setTimerWarning(true);
             toast.warning("⏰ 5 Minutes Remaining", {
@@ -609,7 +582,6 @@ function TestRunnerContent() {
             });
           }
 
-          // Show warning when 1 minute remaining
           if (prev === 60) {
             toast.error("⏰ 1 Minute Remaining!", {
               description: "Test will auto-submit when time expires.",
@@ -627,18 +599,17 @@ function TestRunnerContent() {
         }
       };
     }
-  }, [test, hasStarted, submitting]);
+  }, [test, hasStarted, submitting, timerWarning]);
 
-  // Format time display
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
 
     if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
     }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
   useEffect(() => {
@@ -656,47 +627,43 @@ function TestRunnerContent() {
     console.log("Starting test...");
     setStartAttempting(true);
 
-    // Request microphone permission before starting test
     try {
       console.log("Requesting microphone permission...");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setMicrophonePermission('granted');
-      // Stop the stream immediately as we just needed permission
-      stream.getTracks().forEach(track => track.stop());
-      toast.success('Microphone Access Granted', {
-        description: 'Speaking questions will work properly during the test.',
+      setMicrophonePermission("granted");
+      stream.getTracks().forEach((track) => track.stop());
+      toast.success("Microphone Access Granted", {
+        description: "Speaking questions will work properly during the test.",
         duration: 3000,
       });
       console.log("Microphone permission granted");
     } catch (micError) {
       console.warn("Microphone permission denied:", micError);
-      setMicrophonePermission('denied');
-      toast.warning('Microphone Access Denied', {
-        description: 'You can still take the test, but speaking questions may not work properly.',
+      setMicrophonePermission("denied");
+      toast.warning("Microphone Access Denied", {
+        description: "You can still take the test, but speaking questions may not work properly.",
         duration: 5000,
       });
     }
 
     try {
-      // Start test attempt in backend
       const startRes = await api.apiPost(`/student/tests/${testId}/start`, {});
       if (!startRes.ok) {
         const errorMessage = startRes.error?.message || "Failed to start test attempt";
 
-        // Handle specific error cases
         if (errorMessage.includes("already in progress")) {
-          // Try to recover the existing attempt
           if (startRes.data?.existingAttempt) {
             const existingAttemptId = startRes.data.existingAttempt.attemptId;
             setAttemptId(existingAttemptId);
-            setHasStarted(true); toast.success("Resumed Test", {
+            setHasStarted(true);
+            toast.success("Resumed Test", {
               description: "Continuing your existing test session.",
               duration: 3000,
             });
+            setStartAttempting(false);
             return;
           }
 
-          // If no existing attempt data, try cleanup
           toast.info("Cleaning up session...", {
             description: "Attempting to resolve session conflict.",
             duration: 2000,
@@ -704,7 +671,6 @@ function TestRunnerContent() {
 
           try {
             await api.apiPost(`/student/tests/${testId}/cleanup`, {});
-            // Retry starting the test after cleanup
             setTimeout(() => {
               handleStartTest();
             }, 1000);
@@ -717,49 +683,49 @@ function TestRunnerContent() {
               window.location.reload();
             }, 2000);
           }
+          setStartAttempting(false);
           return;
         } else if (errorMessage.includes("already attempted")) {
           toast.error("Test Completed", {
             description: "You have already completed this test. Contact admin if you need to retake it.",
             duration: 5000,
           });
-          // Redirect to dashboard
           setTimeout(() => {
-            router.push('/student/dashboard');
+            router.push("/student/dashboard");
           }, 2000);
+          setStartAttempting(false);
           return;
         }
 
         toast.error("Cannot start test", {
           description: errorMessage,
         });
+        setStartAttempting(false);
         return;
       }
 
       setAttemptId(startRes.data.attemptId);
       console.log("Test attempt started:", startRes.data);
 
-      // Also start the exam security session if we have a device session
       if (sessionToken) {
         try {
-          const examStartRes = await api.apiPost('/security/exam/start', {
+          const examStartRes = await api.apiPost("/security/exam/start", {
             testId: testId,
             sessionToken: sessionToken,
             deviceFingerprint: `${navigator.platform}-${navigator.userAgent}`,
-            clientStartTime: new Date().toISOString()
+            clientStartTime: new Date().toISOString(),
           });
 
           if (examStartRes.ok) {
-            console.log('Exam security session started successfully');
+            console.log("Exam security session started successfully");
           } else {
-            console.warn('Failed to start exam security session:', examStartRes.error);
+            console.warn("Failed to start exam security session:", examStartRes.error);
           }
         } catch (examStartError) {
-          console.warn('Exam security session start error:', examStartError);
+          console.warn("Exam security session start error:", examStartError);
         }
       }
 
-      // Now try to enter fullscreen
       if (document.documentElement.requestFullscreen) {
         console.log("Requesting fullscreen...");
         await document.documentElement.requestFullscreen();
@@ -772,7 +738,6 @@ function TestRunnerContent() {
           duration: 3000,
         });
         setHasStarted(true);
-
       }
     } catch (err) {
       console.error("Fullscreen failed:", err);
@@ -787,7 +752,6 @@ function TestRunnerContent() {
   };
 
   const fullscreenExitCountRef = useRef(0);
-
   const backgroundSubmissionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -799,7 +763,7 @@ function TestRunnerContent() {
 
         console.log(`Fullscreen exited - Auto-submitting test (${fullscreenExitCountRef.current} violations)`);
 
-        proctoring.logViolation?.('fullscreen_exit', `Fullscreen exited ${fullscreenExitCountRef.current} times`);
+        proctoring.logViolation?.("fullscreen_exit", `Fullscreen exited ${fullscreenExitCountRef.current} times`);
 
         setTimeout(() => {
           if (submitFunctionRef.current) {
@@ -809,36 +773,38 @@ function TestRunnerContent() {
       }
     };
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
 
     return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
-  }, [hasStarted, submitting, isSubmissionInProgress, isAutoSubmitting, proctoring]);
+  }, [hasStarted, submitting, isSubmissionInProgress, isAutoSubmitting, proctoring, loading, test]);
 
   async function fetchTest(id: string) {
-    console.log('fetchTest called with id:', id);
+    console.log("fetchTest called with id:", id);
     setLoading(true);
     setError(null);
     try {
-      console.log('Making API call to fetch test');
+      console.log("Making API call to fetch test");
       const res = await api.apiGet(`/student/tests/${id}`);
-      console.log('API response:', res);
+      console.log("API response:", res);
       if (!res.ok) {
-        console.error('API error:', res.error);
+        console.error("API error:", res.error);
         setError(res.error?.message || "Failed to load test");
         setLoading(false);
         return;
       }
       const testData = res.data;
-      console.log('Test data received:', testData);
+      console.log("Test data received:", testData);
 
-      // Check if student can attempt this test
       if (!testData.canAttempt && testData.attemptInfo) {
-        // Handle completed test with proper UI
         const message = testData.attemptInfo.message;
-        if (message.includes('already completed') || message.includes('already attempted') || testData.attemptInfo.status === 'completed') {
-          setError('Test Already Completed: You have already completed this test. Contact admin if you need to retake it.');
+        if (
+          message.includes("already completed") ||
+          message.includes("already attempted") ||
+          testData.attemptInfo.status === "completed"
+        ) {
+          setError("Test Already Completed: You have already completed this test. Contact admin if you need to retake it.");
         } else {
           setError(message);
         }
@@ -847,10 +813,10 @@ function TestRunnerContent() {
       }
 
       const t: TestSet = testData;
-      console.log('Test data received:', t);
+      console.log("Test data received:", t);
 
       t.questions = t.questions.map((q) =>
-        q.questionType === "mcq"
+        q.questionType === "mcq" || q.questionType === "match"
           ? {
             ...q,
             options: Array.isArray(q.options) && q.options.length ? q.options : [{ text: "" }, { text: "" }],
@@ -868,12 +834,12 @@ function TestRunnerContent() {
       setSpeakingState({});
       speakingBlobsRef.current = {};
       setSubmitMessage(null);
-      console.log('Test state set successfully');
+      console.log("Test state set successfully");
     } catch (err: any) {
-      console.error('fetchTest error:', err);
+      console.error("fetchTest error:", err);
       setError(err?.message || "Network error");
     } finally {
-      console.log('Setting loading to false');
+      console.log("Setting loading to false");
       setLoading(false);
     }
   }
@@ -884,10 +850,9 @@ function TestRunnerContent() {
     try {
       stopAnyRecording();
 
-      // Check if microphone permission was already granted
-      if (microphonePermission === 'denied') {
-        toast.error('Microphone Access Required', {
-          description: 'Please allow microphone access and refresh the page to record speaking responses.',
+      if (microphonePermission === "denied") {
+        toast.error("Microphone Access Required", {
+          description: "Please allow microphone access and refresh the page to record speaking responses.",
           duration: 5000,
         });
         return;
@@ -901,7 +866,6 @@ function TestRunnerContent() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       mediaStreamRef.current = stream;
 
-      // Auto-stop recording after time limit
       if (recordLimit && recordLimit > 0) {
         setTimeout(() => {
           if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -914,7 +878,6 @@ function TestRunnerContent() {
         }, recordLimit * 1000);
       }
 
-      // WAIT until video element is fully mounted
       setSpeakingState((prev) => ({
         ...prev,
         [key]: { ...(prev[key] || {}), recording: true, liveStream: stream },
@@ -937,7 +900,7 @@ function TestRunnerContent() {
             video.play().catch(() => { });
           };
         }
-      }, 150); // <<< KEY FIX (delay allows DOM to mount)
+      }, 150);
 
       const mr = new MediaRecorder(stream);
       mediaRecorderRef.current = mr;
@@ -954,6 +917,16 @@ function TestRunnerContent() {
 
         const url = URL.createObjectURL(blob);
         speakingBlobsRef.current[key] = blob;
+
+        // so the backend (/student/submit/:testId/:skill) can see it.
+        setAnswers((prev) => ({
+          ...prev,
+          [key]: {
+            ...(prev[key] || {}),
+            // value doesn't matter; backend just checks that uploadedUrl exists & is non-empty
+            uploadedUrl: `local-recording-${Date.now()}`,
+          },
+        }));
 
         setSpeakingState((prev) => ({
           ...prev,
@@ -981,8 +954,6 @@ function TestRunnerContent() {
       }));
     }
   }
-
-
 
   function stopRecording() {
     const mr = mediaRecorderRef.current;
@@ -1040,7 +1011,14 @@ function TestRunnerContent() {
       return test.listeningSections;
     }
     if (test.audioUrl) {
-      return [{ id: "_legacy_listening_", title: "Audio 1", audioUrl: test.audioUrl, listenLimit: test.listenLimit ?? 1 }];
+      return [
+        {
+          id: "_legacy_listening_",
+          title: "Audio 1",
+          audioUrl: test.audioUrl,
+          listenLimit: test.listenLimit ?? 1,
+        },
+      ];
     }
     return [];
   }
@@ -1098,11 +1076,7 @@ function TestRunnerContent() {
             </div>
             <div className="flex-1 p-6 bg-indigo-50 rounded-md">
               {sec.audioUrl ? (
-                <AudioPlayer
-                  audioUrl={sec.audioUrl}
-                  playLimit={sec.listenLimit ?? 1}
-                  sectionId={sec.id}
-                />
+                <AudioPlayer audioUrl={sec.audioUrl} playLimit={sec.listenLimit ?? 1} sectionId={sec.id} />
               ) : (
                 <div className="text-lg text-slate-600">No audio configured.</div>
               )}
@@ -1118,7 +1092,19 @@ function TestRunnerContent() {
           <div className="mb-3">
             <h3 className="text-base font-semibold text-indigo-700">Prompt</h3>
           </div>
-          <div className="flex-1 p-6 bg-indigo-50 rounded-md text-lg text-slate-800 leading-relaxed whitespace-pre-wrap">{q.prompt}</div>
+          <div className="flex-1 p-6 bg-indigo-50 rounded-md text-lg text-slate-800 leading-relaxed">
+            <div className="whitespace-pre-wrap">{q.prompt}</div>
+
+            {q.imageUrl && (
+              <div className="mt-4 flex justify-center">
+                <img
+                  src={q.imageUrl}
+                  alt={q.imageAlt || "Question image"}
+                  className="max-h-[360px] w-auto rounded-lg border border-slate-200 object-contain shadow-sm bg-white"
+                />
+              </div>
+            )}
+          </div>
         </div>
       );
     }
@@ -1147,10 +1133,13 @@ function TestRunnerContent() {
                   type="button"
                   onClick={() => toggleMcqSelection(key, i)}
                   className={`w-full flex items-center gap-4 p-4 rounded-full transition-shadow text-left text-base leading-snug
-                    ${selected ? "bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-lg" : "bg-white border border-slate-200 text-slate-800 hover:shadow-sm"}
+                    ${selected
+                      ? "bg-linear-to-r from-indigo-500 to-violet-500 text-white shadow-lg"
+                      : "bg-white border border-slate-200 text-slate-800 hover:shadow-sm"
+                    }
                   `}
                 >
-                  <div className={`w-4 h-4 rounded-full flex-shrink-0 ${selected ? "bg-white/95" : "bg-slate-300"}`}></div>
+                  <div className={`w-4 h-4 rounded-full shrink-0 ${selected ? "bg-white/95" : "bg-slate-300"}`}></div>
                   <span>{opt.text}</span>
                 </button>
               );
@@ -1162,40 +1151,131 @@ function TestRunnerContent() {
       );
     }
 
+    if (q.questionType === "match") {
+      const key = qKey(q, index);
+      const ans = answers[key];
+      const leftItems = q.leftItems || [];
+      const rightItems = q.rightItems || [];
+      const options = q.options || [];
+      const selectedIndex = ans?.selectedIndex;
+
+      return (
+        <div>
+          <div className="mb-5">
+            <h3 className="text-lg font-semibold text-slate-800">Match the following</h3>
+            <p className="text-base text-slate-700 mt-2">{q.prompt}</p>
+          </div>
+
+          {/* Left / Right columns */}
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div>
+              <div className="text-sm font-semibold text-slate-700 mb-2">Left side</div>
+              <ul className="space-y-1 text-sm">
+                {leftItems.map((item, idx) => (
+                  <li key={idx} className="flex gap-2">
+                    <span className="font-mono text-slate-500">
+                      {String.fromCharCode(97 + idx)}.
+                    </span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <div className="text-sm font-semibold text-slate-700 mb-2">Right side</div>
+              <ul className="space-y-1 text-sm">
+                {rightItems.map((item, idx) => (
+                  <li key={idx} className="flex gap-2">
+                    <span className="font-mono text-slate-500">
+                      {ROMAN[idx] || `${idx + 1}`}.
+                    </span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* Combination options – same selection UX as MCQ */}
+          <div className="mb-3 text-sm text-slate-700">
+            Choose the correct combination:
+          </div>
+          <div className="grid grid-cols-1 gap-3">
+            {options.map((opt, i) => {
+              const selected = selectedIndex === i;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => toggleMcqSelection(key, i)}
+                  className={`w-full flex items-center gap-4 p-4 rounded-full transition-shadow text-left text-base leading-snug
+                ${selected
+                      ? "bg-linear-to-r from-indigo-500 to-violet-500 text-white shadow-lg"
+                      : "bg-white border border-slate-200 text-slate-800 hover:shadow-sm"
+                    }
+              `}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full shrink-0 ${selected ? "bg-white/95" : "bg-slate-300"
+                      }`}
+                  />
+                  <span>{opt.text}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="text-xs text-slate-500 mt-2">
+            Click again to deselect an option.
+          </div>
+        </div>
+      );
+    }
+
+
     if (q.questionType === "writing") {
       const text = ans?.text || "";
       const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
       const charCount = text.length;
-      const hasWordLimit = typeof q.wordLimit === 'number' && q.wordLimit > 0;
-      const hasCharLimit = typeof q.charLimit === 'number' && q.charLimit > 0;
+      const hasWordLimit = typeof q.wordLimit === "number" && q.wordLimit > 0;
+      const hasCharLimit = typeof q.charLimit === "number" && q.charLimit > 0;
 
       const wordLimitExceeded = hasWordLimit && wordCount > q.wordLimit!;
       const charLimitExceeded = hasCharLimit && charCount > q.charLimit!;
 
       return (
         <div>
+          {q.imageUrl && (
+            <div className="mb-4 flex justify-center">
+              <img
+                src={q.imageUrl}
+                alt={q.imageAlt || "Question image"}
+                className="max-h-[260px] w-auto rounded-lg border border-slate-200 object-contain shadow-sm bg-white"
+              />
+            </div>
+          )}
+
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-slate-800">Write your answer</h3>
             <div className="text-sm space-y-1">
               {hasWordLimit && (
-                <div className={`${wordLimitExceeded ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>
+                <div className={`${wordLimitExceeded ? "text-red-600 font-semibold" : "text-slate-600"}`}>
                   Words: {wordCount} / {q.wordLimit}
                 </div>
               )}
               {hasCharLimit && (
-                <div className={`${charLimitExceeded ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>
+                <div className={`${charLimitExceeded ? "text-red-600 font-semibold" : "text-slate-600"}`}>
                   Characters: {charCount} / {q.charLimit}
                 </div>
               )}
-              {!hasWordLimit && !hasCharLimit && (
-                <div className="text-slate-600">Words: {wordCount}</div>
-              )}
+              {!hasWordLimit && !hasCharLimit && <div className="text-slate-600">Words: {wordCount}</div>}
             </div>
           </div>
           <textarea
             className={`w-full min-h-[420px] border-2 rounded-md p-5 text-lg leading-relaxed resize-vertical transition-colors ${wordLimitExceeded || charLimitExceeded
-              ? 'border-red-400 focus:border-red-500'
-              : 'border-slate-200 focus:border-indigo-400'
+              ? "border-red-400 focus:border-red-500"
+              : "border-slate-200 focus:border-indigo-400"
               }`}
             placeholder="Type your response here..."
             value={text}
@@ -1207,12 +1287,10 @@ function TestRunnerContent() {
             data-gramm="false"
             data-enable-grammarly="false"
             data-gramm_editor="false"
-            style={{ imeMode: 'disabled' }}
+            style={{ imeMode: "disabled" }}
           />
           {(wordLimitExceeded || charLimitExceeded) && (
-            <p className="text-sm text-red-600 mt-2">
-              ⚠️ You have exceeded the limit. Please reduce your answer.
-            </p>
+            <p className="text-sm text-red-600 mt-2">⚠️ You have exceeded the limit. Please reduce your answer.</p>
           )}
         </div>
       );
@@ -1221,6 +1299,16 @@ function TestRunnerContent() {
     if (q.questionType === "speaking") {
       return (
         <div>
+          {q.imageUrl && (
+            <div className="mb-4 flex justify-center">
+              <img
+                src={q.imageUrl}
+                alt={q.imageAlt || "Question image"}
+                className="max-h-[260px] w-auto rounded-lg border border-slate-200 object-contain shadow-sm bg-white"
+              />
+            </div>
+          )}
+
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-slate-800">Record your response</h3>
@@ -1371,19 +1459,32 @@ function TestRunnerContent() {
         console.log('Submitting test without answers - this is allowed');
       }
 
+      // ------------- SPEAKING: merge ALL question recordings -------------
       if (skill === "speaking") {
-        const speakingQuestions = test.questions.map((q, idx) => ({ q, idx })).filter((x) => x.q.questionType === "speaking");
+        const speakingQuestions = test.questions
+          .map((q, idx) => ({ q, idx }))
+          .filter((x) => x.q.questionType === "speaking");
 
+        // Collect all recorded blobs in question order
+        const speakingBlobs: Blob[] = [];
+        for (const { q, idx } of speakingQuestions) {
+          const key = qKey(q, idx);
+          const blob = speakingBlobsRef.current[key];
+          if (blob) {
+            speakingBlobs.push(blob);
+          }
+        }
+
+        // Merge all blobs into a single WebM (simple concatenation)
         let speakingBlob: Blob | undefined;
-        if (speakingQuestions.length > 0) {
-          const main = speakingQuestions[0];
-          const key = qKey(main.q, main.idx);
-          speakingBlob = speakingBlobsRef.current[key];
+        if (speakingBlobs.length === 1) {
+          speakingBlob = speakingBlobs[0];
+        } else if (speakingBlobs.length > 1) {
+          speakingBlob = new Blob(speakingBlobs, { type: "audio/webm" });
         }
 
         if (!speakingBlob && !autoSubmit) {
-
-          console.log('Submitting speaking test without recording - user confirmed');
+          console.log('Submitting speaking test without any recording - user confirmed');
         }
 
         setSubmitMessage("Test submitted! Redirecting...");
@@ -1442,8 +1543,9 @@ function TestRunnerContent() {
 
         return;
       }
+      // -------------------------------------------------------------------
 
-
+      // Non-speaking skills (reading / listening / writing)
       setSubmitMessage("Test submitted! Redirecting...");
 
       if (document.fullscreenElement) {
@@ -1501,6 +1603,8 @@ function TestRunnerContent() {
     }
   }
 
+
+
   const goNext = useCallback(() => {
     stopAnyRecording();
     if (currentIndex < flatQuestions.length - 1) {
@@ -1517,13 +1621,13 @@ function TestRunnerContent() {
     }
   }, [currentIndex]);
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Render state:', { testId, loading, error: !!error, hasTest: !!test, hasStarted });
+  if (process.env.NODE_ENV === "development") {
+    console.log("Render state:", { testId, loading, error: !!error, hasTest: !!test, hasStarted });
   }
 
   if (!testId) {
     return (
-      <div className="w-screen min-h-screen bg-gradient-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
+      <div className="w-screen min-h-screen bg-linear-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
         <div className="max-w-[1200px] w-full bg-white rounded-xl shadow-md border p-8 text-center">
           <div className="text-red-600 text-lg">No testId provided in URL.</div>
         </div>
@@ -1533,7 +1637,7 @@ function TestRunnerContent() {
 
   if (loading) {
     return (
-      <div className="w-screen min-h-screen bg-gradient-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
+      <div className="w-screen min-h-screen bg-linear-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
         <Card className="max-w-md w-full p-8 text-center space-y-6 shadow-lg">
           <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mx-auto" />
           <p className="text-slate-600">Loading test...</p>
@@ -1544,28 +1648,39 @@ function TestRunnerContent() {
 
   if (error) {
     return (
-      <div className="w-screen min-h-screen bg-gradient-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
+      <div className="w-screen min-h-screen bg-linear-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
         <Card className="max-w-md w-full p-8 text-center space-y-6 shadow-lg">
           <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
             <AlertCircle className="w-8 h-8 text-red-600" />
           </div>
           <div className="text-red-600 text-lg font-semibold">
-            {error.includes('Test Already Completed') ? 'Test Already Completed' :
-              error.includes('already attempted') || error.includes('already completed') ? 'Test Already Completed' :
-                'Error Loading Test'}
+            {error.includes("Test Already Completed")
+              ? "Test Already Completed"
+              : error.includes("already attempted") || error.includes("already completed")
+                ? "Test Already Completed"
+                : "Error Loading Test"}
           </div>
           <p className="text-slate-600">{error}</p>
-          {(error.includes('Test Already Completed') || error.includes('already attempted') || error.includes('already completed')) ? (
+          {error.includes("Test Already Completed") ||
+            error.includes("already attempted") ||
+            error.includes("already completed") ? (
             <div className="space-y-3">
-              <Button onClick={() => router.push('/student/test')} className="w-full bg-indigo-600 hover:bg-indigo-700">
+              <Button
+                onClick={() => router.push("/student/test")}
+                className="w-full bg-indigo-600 hover:bg-indigo-700"
+              >
                 View Other Tests
               </Button>
-              <Button variant="outline" onClick={() => router.push('/student/dashboard')} className="w-full">
+              <Button
+                variant="outline"
+                onClick={() => router.push("/student/dashboard")}
+                className="w-full"
+              >
                 Back to Dashboard
               </Button>
             </div>
           ) : (
-            <Button onClick={() => router.push('/student/test')} className="w-full">
+            <Button onClick={() => router.push("/student/test")} className="w-full">
               Back to Tests
             </Button>
           )}
@@ -1575,28 +1690,32 @@ function TestRunnerContent() {
   }
 
   if (!hasStarted && test) {
-    console.log('Test loaded, showing start screen');
+    console.log("Test loaded, showing start screen");
     return (
-      <div className="w-screen min-h-screen bg-gradient-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
+      <div className="w-screen min-h-screen bg-linear-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
         <Card className="max-w-md w-full p-8 text-center space-y-6 shadow-lg">
           <div className="mx-auto w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
             <BookOpen className="w-8 h-8 text-indigo-600" />
           </div>
           <h1 className="text-2xl font-bold text-slate-800">Ready to start?</h1>
           <div className="space-y-2 text-slate-600">
-            <p>The test <strong>{test.title}</strong> is about to begin.</p>
+            <p>
+              The test <strong>{test.title}</strong> is about to begin.
+            </p>
             <p className="text-sm bg-amber-50 text-amber-800 p-3 rounded-md border border-amber-200">
-              ⚠️ This test will run in full-screen mode. Exiting full-screen or switching tabs will be recorded as a violation.
+              ⚠️ This test will run in full-screen mode. Exiting full-screen or switching tabs will be recorded as a
+              violation.
             </p>
             {microphonePermission && (
-              <div className={`text-sm p-3 rounded-md border ${microphonePermission === 'granted'
-                ? 'bg-green-50 text-green-800 border-green-200'
-                : 'bg-red-50 text-red-800 border-red-200'
-                }`}>
-                {microphonePermission === 'granted'
-                  ? '🎤 Microphone access granted - speaking questions will work properly'
-                  : '🎤 Microphone access denied - speaking questions may not work'
-                }
+              <div
+                className={`text-sm p-3 rounded-md border ${microphonePermission === "granted"
+                  ? "bg-green-50 text-green-800 border-green-200"
+                  : "bg-red-50 text-red-800 border-red-200"
+                  }`}
+              >
+                {microphonePermission === "granted"
+                  ? "🎤 Microphone access granted - speaking questions will work properly"
+                  : "🎤 Microphone access denied - speaking questions may not work"}
               </div>
             )}
           </div>
@@ -1622,15 +1741,10 @@ function TestRunnerContent() {
 
   return (
     <>
-      {/* Violation Dialog */}
       {proctoring.criticalViolationType && !isSubmissionInProgress && !isAutoSubmitting && (
-        <ViolationDialog
-          type={proctoring.criticalViolationType}
-          onClose={proctoring.dismissCriticalViolation}
-        />
+        <ViolationDialog type={proctoring.criticalViolationType} onClose={proctoring.dismissCriticalViolation} />
       )}
 
-      {/* Screen monitoring warning dialog */}
       <ViolationWarningDialog
         open={proctoring.screenMonitoring.showWarningDialog}
         violationType={proctoring.screenMonitoring.currentViolationType}
@@ -1638,7 +1752,6 @@ function TestRunnerContent() {
         onProceedWithViolation={proctoring.screenMonitoring.proceedWithAutoSubmit}
       />
 
-      {/* Input restrictions warning dialog */}
       <ViolationWarningDialog
         open={proctoring.inputRestrictions.showWarningDialog}
         violationType={proctoring.inputRestrictions.currentViolationType}
@@ -1648,10 +1761,8 @@ function TestRunnerContent() {
 
       {showSubmissionModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-8">
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm"></div>
 
-          {/* Modal */}
           <div className="relative bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-slate-200">
             <div className="text-center space-y-6">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
@@ -1670,7 +1781,7 @@ function TestRunnerContent() {
                 <Button
                   onClick={() => {
                     setShowSubmissionModal(false);
-                    setIsSubmissionInProgress(false); // Re-enable monitoring if user cancels
+                    setIsSubmissionInProgress(false);
                   }}
                   variant="outline"
                   className="px-8 py-3 text-sm font-medium"
@@ -1680,7 +1791,6 @@ function TestRunnerContent() {
                 <Button
                   onClick={() => {
                     setShowSubmissionModal(false);
-                    // Continue with submission immediately
                     handleSubmit(false);
                   }}
                   className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 text-sm font-medium shadow-lg"
@@ -1693,23 +1803,22 @@ function TestRunnerContent() {
         </div>
       )}
 
-      {/* Fullscreen Exit Warning Dialog - REMOVED: No modal should allow exit */}
-
-      <div className="w-screen min-h-screen bg-gradient-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
-        <div className="max-w-[1200px] w-full bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden" style={{ minHeight: "80vh" }}>
-          {/* Security Warning Banner */}
+      <div className="w-screen min-h-screen bg-linear-to-b from-indigo-50 via-violet-50 to-white flex items-center justify-center p-8">
+        <div
+          className="max-w-[1200px] w-full bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden"
+          style={{ minHeight: "80vh" }}
+        >
           {isTestCompromised && (
             <div className="bg-red-100 border-b border-red-400 p-4">
               <div className="flex items-center text-red-700">
-                <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0" />
+                <AlertCircle className="w-5 h-5 mr-3 shrink-0" />
                 <div>
                   <div className="font-bold text-sm">🚨 Test Security Compromised</div>
                   <div className="text-sm">{violationMessage}</div>
                   <div className="text-xs mt-1">
                     {isAutoSubmitting
                       ? "Auto-submitting test now. Please wait and do not close this window."
-                      : "Manual submission disabled. Test will auto-submit to prevent cheating."
-                    }
+                      : "Manual submission disabled. Test will auto-submit to prevent cheating."}
                   </div>
                 </div>
               </div>
@@ -1719,69 +1828,118 @@ function TestRunnerContent() {
             <div className="w-2/5 min-w-[420px] border-r border-slate-100 p-6">
               <div className="h-full sticky top-6 flex flex-col">
                 <div className="mb-5 space-y-3">
-                  {/* Enhanced Timer Display */}
                   {timeRemaining !== null && timeRemaining > 0 && (
-                    <div className={`rounded-lg p-4 border-2 ${timeRemaining <= 60 ? 'bg-red-50 border-red-300 animate-pulse' :
-                      timeRemaining <= 300 ? 'bg-amber-50 border-amber-300' :
-                        'bg-green-50 border-green-300'
-                      }`}>
+                    <div
+                      className={`rounded-lg p-4 border-2 ${timeRemaining <= 60
+                        ? "bg-red-50 border-red-300 animate-pulse"
+                        : timeRemaining <= 300
+                          ? "bg-amber-50 border-amber-300"
+                          : "bg-green-50 border-green-300"
+                        }`}
+                    >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
-                          <Clock className={`w-5 h-5 ${timeRemaining <= 60 ? 'text-red-600' :
-                            timeRemaining <= 300 ? 'text-amber-600' :
-                              'text-green-600'
-                            }`} />
-                          <span className={`font-mono text-lg font-bold ${timeRemaining <= 60 ? 'text-red-700' :
-                            timeRemaining <= 300 ? 'text-amber-700' :
-                              'text-green-700'
-                            }`}>
+                          <Clock
+                            className={`w-5 h-5 ${timeRemaining <= 60
+                              ? "text-red-600"
+                              : timeRemaining <= 300
+                                ? "text-amber-600"
+                                : "text-green-600"
+                              }`}
+                          />
+                          <span
+                            className={`font-mono text-lg font-bold ${timeRemaining <= 60
+                              ? "text-red-700"
+                              : timeRemaining <= 300
+                                ? "text-amber-700"
+                                : "text-green-700"
+                              }`}
+                          >
                             {formatTime(timeRemaining)}
                           </span>
                         </div>
-                        <span className={`text-sm font-medium ${timeRemaining <= 60 ? 'text-red-600' :
-                          timeRemaining <= 300 ? 'text-amber-600' :
-                            'text-green-600'
-                          }`}>
+                        <span
+                          className={`text-sm font-medium ${timeRemaining <= 60
+                            ? "text-red-600"
+                            : timeRemaining <= 300
+                              ? "text-amber-600"
+                              : "text-green-600"
+                            }`}
+                        >
                           {Math.floor(timeRemaining / 60)}min left
                         </span>
                       </div>
 
-                      {/* Progress bar */}
                       <div className="mt-3">
                         <div className="flex justify-between text-xs mb-1">
                           <span className="text-slate-600">Progress</span>
-                          <span className="text-slate-600">{Math.floor((1 - (timeRemaining / ((test?.timeLimitMinutes || 60) * 60))) * 100)}%</span>
+                          <span className="text-slate-600">
+                            {Math.floor(
+                              (1 - timeRemaining / ((test?.timeLimitMinutes || 60) * 60)) * 100
+                            )}
+                            %
+                          </span>
                         </div>
                         <div className="w-full bg-slate-200 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full transition-all duration-1000 ${timeRemaining <= 60 ? 'bg-red-500' :
-                              timeRemaining <= 300 ? 'bg-amber-500' :
-                                'bg-green-500'
+                            className={`h-2 rounded-full transition-all duration-1000 ${timeRemaining <= 60
+                              ? "bg-red-500"
+                              : timeRemaining <= 300
+                                ? "bg-amber-500"
+                                : "bg-green-500"
                               }`}
-                            style={{ width: `${Math.floor((1 - (timeRemaining / ((test?.timeLimitMinutes || 60) * 60))) * 100)}%` }}
+                            style={{
+                              width: `${Math.floor(
+                                (1 - timeRemaining / ((test?.timeLimitMinutes || 60) * 60)) * 100
+                              )}%`,
+                            }}
                           ></div>
                         </div>
                       </div>
 
                       {timeRemaining <= 300 && (
-                        <div className={`text-xs mt-2 p-2 rounded ${timeRemaining <= 60 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                          }`}>
-                          ⚠️ {timeRemaining <= 60 ? 'URGENT: Submit soon!' : 'Time running low!'}
+                        <div
+                          className={`text-xs mt-2 p-2 rounded ${timeRemaining <= 60
+                            ? "bg-red-100 text-red-700"
+                            : "bg-amber-100 text-amber-700"
+                            }`}
+                        >
+                          ⚠️ {timeRemaining <= 60 ? "URGENT: Submit soon!" : "Time running low!"}
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* Test Info */}
-                  <div className="rounded-md p-4" style={{ background: "linear-gradient(180deg, rgba(239,246,255,1) 0%, rgba(245,243,255,1) 100%)" }}>
+                  <div
+                    className="rounded-md p-4"
+                    style={{
+                      background:
+                        "linear-gradient(180deg, rgba(239,246,255,1) 0%, rgba(245,243,255,1) 100%)",
+                    }}
+                  >
                     <div className="flex items-center gap-4">
                       <div className="p-3 bg-indigo-100 rounded-md">
-                        {test?.type === "reading" ? <BookOpen className="w-6 h-6 text-indigo-700" /> : test?.type === "listening" ? <Headphones className="w-6 h-6 text-indigo-700" /> : test?.type === "writing" ? <Pen className="w-6 h-6 text-indigo-700" /> : <Mic className="w-6 h-6 text-indigo-700" />}
+                        {test?.type === "reading" ? (
+                          <BookOpen className="w-6 h-6 text-indigo-700" />
+                        ) : test?.type === "listening" ? (
+                          <Headphones className="w-6 h-6 text-indigo-700" />
+                        ) : test?.type === "writing" ? (
+                          <Pen className="w-6 h-6 text-indigo-700" />
+                        ) : (
+                          <Mic className="w-6 h-6 text-indigo-700" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs text-slate-500">Test</div>
-                        <div className="text-lg font-semibold text-slate-800 truncate">{test?.title || "Test"}</div>
-                        {typeof test?.timeLimitMinutes === "number" && test?.timeLimitMinutes > 0 && <div className="text-sm text-slate-500 mt-1">Time limit: {test?.timeLimitMinutes} minutes</div>}
+                        <div className="text-lg font-semibold text-slate-800 truncate">
+                          {test?.title || "Test"}
+                        </div>
+                        {typeof test?.timeLimitMinutes === "number" &&
+                          test?.timeLimitMinutes > 0 && (
+                            <div className="text-sm text-slate-500 mt-1">
+                              Time limit: {test?.timeLimitMinutes} minutes
+                            </div>
+                          )}
                       </div>
                     </div>
                   </div>
@@ -1802,18 +1960,25 @@ function TestRunnerContent() {
                     </div>
                   )}
 
-                  {!loading && !error && test && flatQuestions.length === 0 && <div className="text-slate-600">No content available.</div>}
+                  {!loading && !error && test && flatQuestions.length === 0 && (
+                    <div className="text-slate-600">No content available.</div>
+                  )}
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  {/* Progress Stats */}
                   {(() => {
                     const answered = flatQuestions.filter((item, idx) => {
                       const key = qKey(item.q, idx);
                       const ans = answers[key];
-                      if (item.q.questionType === "mcq") return ans?.selectedIndex !== undefined;
-                      if (item.q.questionType === "writing") return ans?.text && ans.text.trim().length > 0;
-                      if (item.q.questionType === "speaking") return !!speakingBlobsRef.current[key];
+                      if (item.q.questionType === "mcq" || item.q.questionType === "match") {
+                        return ans?.selectedIndex !== undefined && ans.selectedIndex !== null;
+                      }
+                      if (item.q.questionType === "writing") {
+                        return ans?.text && ans.text.trim().length > 0;
+                      }
+                      if (item.q.questionType === "speaking") {
+                        return !!speakingBlobsRef.current[key];
+                      }
                       return false;
                     }).length;
                     const total = flatQuestions.length;
@@ -1829,7 +1994,7 @@ function TestRunnerContent() {
                         </div>
                         <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                           <div
-                            className="h-2 bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300"
+                            className="h-2 bg-linear-to-r from-indigo-500 to-violet-500 transition-all duration-300"
                             style={{ width: `${percentage}%` }}
                           />
                         </div>
@@ -1837,11 +2002,21 @@ function TestRunnerContent() {
                     );
                   })()}
 
-                  {/* Current Question Indicator */}
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm text-slate-600">Question {flatQuestions.length ? `${currentIndex + 1} / ${flatQuestions.length}` : "0 / 0"}</div>
+                    <div className="text-sm text-slate-600">
+                      Question{" "}
+                      {flatQuestions.length ? `${currentIndex + 1} / ${flatQuestions.length}` : "0 / 0"}
+                    </div>
                     <div className="w-40 h-2 bg-slate-200 rounded-full overflow-hidden">
-                      <div className="h-2 bg-indigo-500" style={{ width: `${flatQuestions.length ? ((currentIndex + 1) / flatQuestions.length) * 100 : 0}%` }} />
+                      <div
+                        className="h-2 bg-indigo-500"
+                        style={{
+                          width: `${flatQuestions.length
+                            ? ((currentIndex + 1) / flatQuestions.length) * 100
+                            : 0
+                            }%`,
+                        }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1855,14 +2030,18 @@ function TestRunnerContent() {
                     <div>
                       <div className="text-sm text-slate-500">Question</div>
                       <div className="text-2xl font-semibold text-slate-800 mt-2">
-                        {flatQuestions[currentIndex]?.q?.questionType === "writing" || flatQuestions[currentIndex]?.q?.questionType === "speaking"
+                        {flatQuestions[currentIndex]?.q?.questionType === "writing" ||
+                          flatQuestions[currentIndex]?.q?.questionType === "speaking"
                           ? `Task ${currentIndex + 1}`
                           : `Q${currentIndex + 1}`}
                       </div>
                     </div>
 
                     <div className="text-sm text-slate-600">
-                      Marks <div className="font-medium text-slate-700">{flatQuestions[currentIndex]?.q?.marks ?? "-"}</div>
+                      Marks{" "}
+                      <div className="font-medium text-slate-700">
+                        {flatQuestions[currentIndex]?.q?.marks ?? "-"}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1870,16 +2049,20 @@ function TestRunnerContent() {
                 <div>
                   {!loading && !error && test && flatQuestions.length > 0 && (
                     <Card className="p-6 rounded-md shadow-sm border border-slate-100">
-                      {renderRightForCurrent(flatQuestions[currentIndex].q, flatQuestions[currentIndex].idx)}
+                      {renderRightForCurrent(
+                        flatQuestions[currentIndex].q,
+                        flatQuestions[currentIndex].idx
+                      )}
                     </Card>
                   )}
 
-                  {!loading && !error && test && flatQuestions.length === 0 && <div className="text-slate-600">No questions available.</div>}
+                  {!loading && !error && test && flatQuestions.length === 0 && (
+                    <div className="text-slate-600">No questions available.</div>
+                  )}
                 </div>
 
                 <div className="mt-6 sticky bottom-6 bg-white/95 backdrop-blur-sm pt-6 pb-2 -mx-6 px-6 border-t border-slate-100">
                   <div className="flex flex-col gap-4">
-                    {/* Navigation Buttons */}
                     <div className="flex items-center justify-between">
                       <div className="flex gap-2">
                         <Button

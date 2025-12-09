@@ -120,7 +120,7 @@ export function StudDashboard() {
           Welcome to Student Dashboard
         </h1>
         <p className="text-muted-foreground">
-          Track your IELTS skill bands and access your CELTS Proficiency Tests.
+          Track your CELTS skill bands and access your CELTS Proficiency Tests.
         </p>
       </div>
 

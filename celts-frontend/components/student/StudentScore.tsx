@@ -50,6 +50,32 @@ interface StudentStatsDoc {
   overrideDetails?: OverrideDetails;
 }
 
+// NEW: skill & summary types
+type SkillKey = "reading" | "listening" | "writing" | "speaking";
+
+interface SkillSubmissionSummary {
+  skill: SkillKey;
+  submissionId?: string;
+  testId?: string | null;
+  testTitle?: string | null;
+  status: string;
+
+  totalMarks: number;
+  maxMarks: number;
+
+  totalQuestions: number;
+  attemptedCount: number;
+  unattemptedCount: number;
+
+  correctCount: number;
+  incorrectCount: number;
+
+  bandScore: NullableNumber;
+  createdAt?: string | null;
+}
+
+type SubmissionSummaryResponse = Partial<Record<SkillKey, SkillSubmissionSummary>>;
+
 function formatBand(b: NullableNumber): string {
   if (b == null || Number.isNaN(b)) return "Not attempted";
   return Number(b).toFixed(1);
@@ -77,6 +103,14 @@ export function StudentScore() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // NEW: per-skill summary from Submission
+  const [summary, setSummary] = useState<SubmissionSummaryResponse>({});
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  // NEW: which skill is selected in the UI
+  const [selectedSkill, setSelectedSkill] = useState<SkillKey | null>(null);
+
   async function fetchStats() {
     setLoading(true);
     setError(null);
@@ -98,19 +132,59 @@ export function StudentScore() {
     }
   }
 
+  // NEW: fetch latest submissions summary per skill
+  async function fetchSummary() {
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      const res = await api.apiGet("/student/submissions/summary");
+      if (!res.ok) {
+        setSummaryError(
+          res.error?.message || "Failed to load your recent test details"
+        );
+        setSummary({});
+        setSummaryLoading(false);
+        return;
+      }
+      const data: SubmissionSummaryResponse = res.data ?? {};
+      setSummary(data);
+
+      // Auto-select a skill if none selected yet
+      if (!selectedSkill) {
+        const order: SkillKey[] = ["reading", "listening", "writing", "speaking"];
+        const firstWithData = order.find((k) => data[k]);
+        if (firstWithData) setSelectedSkill(firstWithData);
+      }
+    } catch (err: any) {
+      setSummaryError(err?.message || "Network error");
+      setSummary({});
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
   useEffect(() => {
     fetchStats();
+    fetchSummary();
   }, []);
 
   const hasAnyScores = useMemo(() => {
     if (!stats) return false;
-    return (
+
+    const hasBands =
       stats.readingBand != null ||
       stats.listeningBand != null ||
       stats.writingBand != null ||
-      stats.speakingBand != null
-    );
-  }, [stats]);
+      stats.speakingBand != null;
+
+    const hasSummary =
+      summary.reading ||
+      summary.listening ||
+      summary.writing ||
+      summary.speaking;
+
+    return hasBands || !!hasSummary;
+  }, [stats, summary]);
 
   if (loading && !stats) {
     return (
@@ -138,19 +212,40 @@ export function StudentScore() {
         <div className="flex justify-center">
           <BarChart3 className="w-6 h-6 text-primary" />
         </div>
-        <h2 className="text-lg font-semibold">My IELTS Progress</h2>
+        <h2 className="text-lg font-semibold">My CELTS Progress</h2>
         <p className="text-sm text-slate-500">
           No completed tests yet. Your scores will appear here.
         </p>
-        <Button size="sm" variant="outline" onClick={fetchStats}>
-          Refresh
-        </Button>
+        <div className="flex gap-2 justify-center">
+          <Button size="sm" variant="outline" onClick={fetchStats}>
+            Refresh Scores
+          </Button>
+          <Button size="sm" variant="outline" onClick={fetchSummary}>
+            Refresh Details
+          </Button>
+        </div>
       </Card>
     );
   }
 
   const overrideWriting = stats.overrideDetails?.writing;
   const overrideSpeaking = stats.overrideDetails?.speaking;
+
+  // NEW: mapping skill → icon/label/band
+  const skillCards: {
+    key: SkillKey;
+    label: string;
+    icon: any;
+    value: NullableNumber;
+  }[] = [
+    { key: "reading", label: "Reading", icon: BookOpen, value: stats.readingBand },
+    { key: "listening", label: "Listening", icon: Headphones, value: stats.listeningBand },
+    { key: "writing", label: "Writing", icon: Pen, value: stats.writingBand },
+    { key: "speaking", label: "Speaking", icon: Mic, value: stats.speakingBand },
+  ];
+
+  const selectedSummary: SkillSubmissionSummary | undefined =
+    selectedSkill ? summary[selectedSkill] : undefined;
 
   return (
     <>
@@ -161,7 +256,7 @@ export function StudentScore() {
             <div className="flex items-center gap-2 mb-1">
               <BarChart3 className="w-5 h-5 text-primary" />
               <h2 className="text-xl font-semibold text-slate-900">
-                My IELTS Progress
+                My CELTS Progress
               </h2>
             </div>
             <p className="text-sm text-slate-500">
@@ -202,54 +297,186 @@ export function StudentScore() {
         </div>
       </Card>
 
-      {/* Score Cards */}
+      {/* Score Cards – interactive */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-        {[
-          { label: "Reading", value: stats.readingBand, icon: BookOpen },
-          { label: "Listening", value: stats.listeningBand, icon: Headphones },
-          { label: "Writing", value: stats.writingBand, icon: Pen },
-          { label: "Speaking", value: stats.speakingBand, icon: Mic },
-        ].map((item, i) => (
-          <Card
-            key={i}
-            className="py-6 px-4 flex flex-col items-center justify-center text-center border-slate-200 shadow-sm rounded-xl"
-          >
-            <item.icon className="w-6 h-6 text-primary mb-2" />
-            <p className="text-base font-medium text-slate-900">{item.label}</p>
-            <span
-              className={`mt-2 text-3xl font-bold px-5 py-1.5 rounded-xl ${bandBadgeClass(
-                item.value
-              )}`}
+        {skillCards.map(({ key, label, icon: Icon, value }) => {
+          const isActive = selectedSkill === key;
+          const cardBand = value ?? summary[key]?.bandScore ?? null;
+
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setSelectedSkill(key)}
+              className={`relative group text-left focus:outline-none ${
+                isActive ? "ring-2 ring-primary ring-offset-2 rounded-xl" : ""
+              }`}
             >
-              {formatBand(item.value)}
-            </span>
-          </Card>
-        ))}
+              <Card
+                className={`w-full py-6 px-4 flex flex-col items-center justify-center text-center border-slate-200 shadow-sm rounded-xl transition-transform ${
+                  isActive ? "bg-primary/5 scale-[1.02]" : "hover:scale-[1.01]"
+                }`}
+              >
+                <Icon className="w-6 h-6 text-primary mb-2" />
+                <p className="text-base font-medium text-slate-900">{label}</p>
+                <span
+                  className={`mt-2 text-3xl font-bold px-5 py-1.5 rounded-xl ${bandBadgeClass(
+                    cardBand
+                  )}`}
+                >
+                  {formatBand(cardBand)}
+                </span>
+              </Card>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Writing Summary */}
-      {stats.writingExaminerSummary && (
-        <Card className="p-5 border-slate-200 shadow-sm rounded-xl mt-6">
-          <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-            Writing – Examiner Summary
-          </p>
-          <p className="text-sm text-slate-700 leading-relaxed">
-            {stats.writingExaminerSummary}
-          </p>
-        </Card>
-      )}
+      {/* Detailed stats for selected skill */}
+      <div className="mt-6">
+        {summaryLoading && (
+          <div className="flex items-center text-sm text-slate-500 gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Loading latest test details...</span>
+          </div>
+        )}
 
-      {/* Speaking Summary */}
-      {stats.speakingExaminerSummary && (
-        <Card className="p-5 border-slate-200 shadow-sm rounded-xl mt-4">
-          <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-            Speaking – Examiner Summary
+        {summaryError && (
+          <p className="text-sm text-red-600 mb-2">
+            {summaryError}
           </p>
-          <p className="text-sm text-slate-700 leading-relaxed">
-            {stats.speakingExaminerSummary}
-          </p>
-        </Card>
-      )}
+        )}
+
+        {selectedSkill && selectedSummary && (
+          <Card className="p-5 border-slate-200 shadow-sm rounded-xl">
+            {/* Header for the selected skill */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">
+                  {selectedSummary.skill.charAt(0).toUpperCase() +
+                    selectedSummary.skill.slice(1)}{" "}
+                  – Latest Test Details
+                </p>
+                {selectedSummary.testTitle && (
+                  <p className="text-sm text-slate-700 mt-1">
+                    Test:{" "}
+                    <span className="font-medium">{selectedSummary.testTitle}</span>
+                  </p>
+                )}
+                {selectedSummary.createdAt && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Attempted on:{" "}
+                    {new Date(selectedSummary.createdAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-500 uppercase tracking-wide">
+                  Band Score
+                </p>
+                <span
+                  className={`inline-block mt-1 px-4 py-1 rounded-full text-base font-semibold ${bandBadgeClass(
+                    selectedSummary.bandScore
+                  )}`}
+                >
+                  {formatBand(selectedSummary.bandScore)}
+                </span>
+              </div>
+            </div>
+
+            {/* Reading & Listening: full metrics */}
+            {(selectedSkill === "reading" || selectedSkill === "listening") && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Total Questions</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {selectedSummary.totalQuestions}
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Attempted</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {selectedSummary.attemptedCount}
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Correct</p>
+                  <p className="text-lg font-semibold text-emerald-700">
+                    {selectedSummary.correctCount}
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Incorrect</p>
+                  <p className="text-lg font-semibold text-rose-700">
+                    {selectedSummary.incorrectCount}
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Unattempted</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {selectedSummary.unattemptedCount}
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Marks Scored</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {selectedSummary.totalMarks} / {selectedSummary.maxMarks}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Writing & Speaking: only total / attempted / unattempted + examiner summary */}
+            {(selectedSkill === "writing" || selectedSkill === "speaking") && (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500">Total Questions</p>
+                    <p className="text-lg font-semibold text-slate-900">
+                      {selectedSummary.totalQuestions}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500">Attempted</p>
+                    <p className="text-lg font-semibold text-slate-900">
+                      {selectedSummary.attemptedCount}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500">Unattempted</p>
+                    <p className="text-lg font-semibold text-slate-900">
+                      {selectedSummary.unattemptedCount}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Examiner Summary inside the same card */}
+                {selectedSkill === "writing" && stats.writingExaminerSummary && (
+                  <div className="mt-5 border-t border-slate-200 pt-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
+                      Writing – Examiner Summary
+                    </p>
+                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      {stats.writingExaminerSummary}
+                    </p>
+                  </div>
+                )}
+
+                {selectedSkill === "speaking" && stats.speakingExaminerSummary && (
+                  <div className="mt-5 border-t border-slate-200 pt-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
+                      Speaking – Examiner Summary
+                    </p>
+                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      {stats.speakingExaminerSummary}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+        )}
+      </div>
 
       {/* Override: Writing */}
       {overrideWriting && (

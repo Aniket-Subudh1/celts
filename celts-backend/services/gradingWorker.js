@@ -17,8 +17,8 @@ function applyStrictSpeakingPenalties(evaluation, totalQuestions) {
 
   // If many questions have coverage "minimal" or "none", clamp hard
   const perQ = Array.isArray(evaluation.per_question) ? evaluation.per_question : [];
-  const minimalOrNoneCount = perQ.filter(q =>
-    q.coverage === "minimal" || q.coverage === "none"
+  const minimalOrNoneCount = perQ.filter(
+    (q) => q.coverage === "minimal" || q.coverage === "none"
   ).length;
 
   if (totalQuestions > 0) {
@@ -55,7 +55,142 @@ function applyStrictSpeakingPenalties(evaluation, totalQuestions) {
 }
 
 
-// StudentStats helper 
+// Detailed multi-task writing summary using perTaskResults + overall band
+function buildDetailedWritingSummary(perTaskResults, overallBand) {
+  const lines = [];
+
+  lines.push(`Overall Writing Band: ${overallBand != null ? overallBand : "N/A"}`);
+
+  perTaskResults.forEach((t, idx) => {
+    const cb = t.evaluation && t.evaluation.criteria_breakdown
+      ? t.evaluation.criteria_breakdown
+      : {};
+
+    const tr = cb.task_response || {};
+    const cc = cb.cohesion_coherence || {};
+    const lr = cb.lexical_resource || {};
+    const gr = cb.grammatical_range_accuracy || {};
+
+    lines.push("");
+    lines.push(`Task ${idx + 1} (${t.writingType || "Writing Task"})`);
+    lines.push(`Question: ${t.prompt || "N/A"}`);
+    lines.push(`Estimated Band for this Task: ${t.band_score != null ? t.band_score : "N/A"}`);
+
+    lines.push(
+      `- Task Response: ${tr.score != null ? tr.score : "N/A"} – ${
+        tr.feedback || "No detailed task response feedback provided."
+      }`
+    );
+    lines.push(
+      `- Coherence and Cohesion: ${cc.score != null ? cc.score : "N/A"} – ${
+        cc.feedback || "No detailed coherence and cohesion feedback provided."
+      }`
+    );
+    lines.push(
+      `- Lexical Resource: ${lr.score != null ? lr.score : "N/A"} – ${
+        lr.feedback || "No detailed lexical resource feedback provided."
+      }`
+    );
+    lines.push(
+      `- Grammatical Range and Accuracy: ${
+        gr.score != null ? gr.score : "N/A"
+      } – ${
+        gr.feedback ||
+        "No detailed grammatical range and accuracy feedback provided."
+      }`
+    );
+
+    if (t.evaluation && typeof t.evaluation.examiner_summary === "string") {
+      lines.push("");
+      lines.push(
+        `Task-Level Examiner Comments: ${t.evaluation.examiner_summary}`
+      );
+    }
+  });
+
+  return lines.join("\n");
+}
+
+// Detailed speaking summary using evaluation object
+function buildDetailedSpeakingSummary(evaluation, totalQuestions) {
+  const lines = [];
+
+  const overallBand =
+    typeof evaluation.band_score === "number"
+      ? evaluation.band_score
+      : evaluation.overall_band_score;
+
+  lines.push(
+    `Overall Speaking Band: ${overallBand != null ? overallBand : "N/A"}`
+  );
+
+  const cb = evaluation.criteria_breakdown || {};
+  const flu = cb.fluency;
+  const coh = cb.coherence;
+  const vocab = cb.vocabulary;
+  const gram = cb.grammar;
+  const pron = cb.pronunciation;
+
+  lines.push("");
+  lines.push("Criterion-wise Scores and Comments:");
+  lines.push(
+    `- Fluency: ${flu != null ? flu : "N/A"} (assessment based on speech continuity, hesitation, and pace).`
+  );
+  lines.push(
+    `- Coherence: ${coh != null ? coh : "N/A"} (assessment based on logical organisation of ideas and clarity of development).`
+  );
+  lines.push(
+    `- Vocabulary: ${vocab != null ? vocab : "N/A"} (assessment based on range, appropriacy, and precision of word choice).`
+  );
+  lines.push(
+    `- Grammar: ${gram != null ? gram : "N/A"} (assessment based on range and accuracy of grammatical structures).`
+  );
+  lines.push(
+    `- Pronunciation: ${pron != null ? pron : "N/A"} (assessment based on intelligibility, stress, rhythm, and intonation).`
+  );
+
+  const perQ = Array.isArray(evaluation.per_question)
+    ? evaluation.per_question
+    : [];
+
+  if (perQ.length) {
+    lines.push("");
+    lines.push(`Per-Question Coverage (total questions: ${totalQuestions}):`);
+    perQ.forEach((q) => {
+      lines.push("");
+      lines.push(
+        `Question ${q.question_index + 1}: ${q.question_text || "N/A"}`
+      );
+      lines.push(
+        `- Coverage: ${q.coverage || "N/A"}${
+          q.band_score != null ? ` | Estimated band: ${q.band_score}` : ""
+        }`
+      );
+      if (q.notes) {
+        lines.push(`- Notes: ${q.notes}`);
+      }
+    });
+  }
+
+  if (evaluation.transcription) {
+    lines.push("");
+    lines.push("Transcription (used for assessment):");
+    lines.push(evaluation.transcription);
+  }
+
+  if (
+    evaluation.examiner_summary &&
+    typeof evaluation.examiner_summary === "string"
+  ) {
+    lines.push("");
+    lines.push("Global Examiner Comments:");
+    lines.push(evaluation.examiner_summary);
+  }
+
+  return lines.join("\n");
+}
+
+// StudentStats helper
 async function updateStudentStatsForSkill({
   student,
   skill,
@@ -96,7 +231,7 @@ async function updateStudentStatsForSkill({
     if (skill === "speaking") stats.speakingBand = bandScore;
   }
 
-  // Store latest examiner summary for writing 
+  // Store latest examiner summary for writing
   if (
     skill === "writing" &&
     geminiEvaluation &&
@@ -105,17 +240,7 @@ async function updateStudentStatsForSkill({
     stats.writingExaminerSummary = geminiEvaluation.examiner_summary;
   }
 
-  // Store latest examiner summary for writing 
-  if (
-    skill === "writing" &&
-    geminiEvaluation &&
-    typeof geminiEvaluation.examiner_summary === "string"
-  ) {
-    stats.writingExaminerSummary = geminiEvaluation.examiner_summary;
-  }
-
-
-  //Store latest examiner summary for speaking
+  // Store latest examiner summary for speaking
   if (
     skill === "speaking" &&
     geminiEvaluation &&
@@ -141,7 +266,7 @@ async function updateStudentStatsForSkill({
 }
 
 // Gemini client
-// const ai = new GoogleGenAI({});
+// const ai = new GoogleGenAI({ });
 const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 
@@ -304,6 +429,11 @@ Rules:
 - "band_score" must be between 1 and 9.0 (it may be .0 or .5).
 - Each criteria "score" must also be between 1 and 9.0 where possible.
 - Feedback must be concise, IELTS-style, impersonal, and clearly linked to the band scores.
+
+The "examiner_summary" MUST be an in-depth evaluation that:
+- Mentions the overall band clearly.
+- Explicitly comments on Task Response, Coherence and Cohesion, Lexical Resource, and Grammatical Range and Accuracy.
+- Is written in paragraphs or clear sentences, not bullet points, but still concise and focused.
 `.trim();
 
   const userPrompt = `
@@ -437,6 +567,8 @@ STRICT CHECKING INSTRUCTIONS:
    - Be fully impersonal (no "you").
    - Explicitly mention any questions that were not properly answered
      or where the response was much shorter than required.
+   - Comment explicitly on Fluency, Coherence, Vocabulary, Grammar, and Pronunciation,
+     making it clear why the band score is appropriate.
 
 Return ONLY valid json (no markdown, no explanation, no extra text).
 The response MUST be a single json object with EXACTLY this structure:
@@ -543,7 +675,7 @@ submissionQueue.process(async (job) => {
 
   try {
     if (skill === "writing") {
-      // MULTI-QUESTION WRITING SUPPORT 
+      // MULTI-QUESTION WRITING SUPPORT
       const writingQuestions = (testSet.questions || []).filter(
         (q) =>
           q.questionType === "writing" ||
@@ -625,21 +757,15 @@ submissionQueue.process(async (job) => {
 
       // Build a combined evaluationResult keeping top-level fields
       // compatible with your frontend (band_score + examiner_summary).
-      const taskSummaries = perTaskResults
-        .map((t, idx) => {
-          const taskSummary =
-            t.evaluation?.examiner_summary ||
-            t.evaluation?.summary ||
-            "No summary.";
-          return `Task ${idx + 1} (${t.writingType || "Writing"}): ${taskSummary
-            }`;
-        })
-        .join("\n\n");
+      const detailedSummary = buildDetailedWritingSummary(
+        perTaskResults,
+        finalBandScore
+      );
 
       evaluationResult = {
         band_score: finalBandScore,
         examiner_summary:
-          taskSummaries ||
+          detailedSummary ||
           "Multiple writing tasks evaluated. No detailed summaries available.",
         // For backward compatibility, just set criteria_breakdown from first task if present
         criteria_breakdown:
@@ -647,27 +773,36 @@ submissionQueue.process(async (job) => {
         tasks: perTaskResults,
       };
     } else if (skill === "speaking") {
-    const speakingQuestions = (testSet.questions || []).filter(
-      (q) => q.skill === "speaking" || q.questionType === "speaking" );
-    const questions = speakingQuestions.map(
-      (q) => q.prompt || q.text || "" );
+      const speakingQuestions = (testSet.questions || []).filter(
+        (q) => q.skill === "speaking" || q.questionType === "speaking"
+      );
+      const questions = speakingQuestions.map(
+        (q) => q.prompt || q.text || ""
+      );
 
-    // Raw OpenAI evaluation
-    evaluationResult = await gradeSpeaking({
-      questions,
-      mediaPath,
-      audioUrl: response?.audioUrl || null,
-      videoUrl: response?.videoUrl || null,
-      manualTranscription: response?.transcription || null,
-    });
+      // Raw OpenAI evaluation
+      evaluationResult = await gradeSpeaking({
+        questions,
+        mediaPath,
+        audioUrl: response?.audioUrl || null,
+        videoUrl: response?.videoUrl || null,
+        manualTranscription: response?.transcription || null,
+      });
 
-    // Apply strict penalties for underlength / missing answers
-    evaluationResult = applyStrictSpeakingPenalties(
-      evaluationResult,
-      speakingQuestions.length
-    );
+      // Apply strict penalties for underlength / missing answers
+      evaluationResult = applyStrictSpeakingPenalties(
+        evaluationResult,
+        speakingQuestions.length
+      );
 
-    finalBandScore = evaluationResult.band_score;
+      finalBandScore = evaluationResult.band_score;
+
+      // Replace examiner_summary with a detailed structured one
+      const detailedSpeakingSummary = buildDetailedSpeakingSummary(
+        evaluationResult,
+        speakingQuestions.length
+      );
+      evaluationResult.examiner_summary = detailedSpeakingSummary;
     } else {
       console.warn(
         `[Worker] Unsupported skill "${skill}" for submission ${submissionId}`
@@ -702,14 +837,16 @@ submissionQueue.process(async (job) => {
     // Skill-specific summaries
     if (skill === "writing") {
       updateDoc.geminiWritingEvaluationSummary =
-        evaluationResult && typeof evaluationResult.examiner_summary === "string"
+        evaluationResult &&
+        typeof evaluationResult.examiner_summary === "string"
           ? evaluationResult.examiner_summary
           : null;
     }
 
     if (skill === "speaking") {
       updateDoc.geminiSpeakingEvaluationSummary =
-        evaluationResult && typeof evaluationResult.examiner_summary === "string"
+        evaluationResult &&
+        typeof evaluationResult.examiner_summary === "string"
           ? evaluationResult.examiner_summary
           : null;
     }

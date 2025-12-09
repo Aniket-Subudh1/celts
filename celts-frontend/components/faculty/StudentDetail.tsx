@@ -270,7 +270,7 @@ export function StudentDetail() {
       <div>
         <h1 className="text-3xl font-bold mb-2">Student Management</h1>
         <p className="text-muted-foreground">
-          Select a batch to view its students and IELTS band performance.
+          Select a batch to view its students and CELTS band performance.
         </p>
       </div>
 
