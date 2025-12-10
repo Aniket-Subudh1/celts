@@ -16,7 +16,7 @@ async function uploadToS3(fileBuffer, fileName, mimeType, folder = 'audio') {
     Key: key,
     Body: fileBuffer,
     ContentType: mimeType,
-    // ACL: 'public-read' 
+    ACL: 'public-read' 
   };
 
   try {

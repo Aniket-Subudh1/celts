@@ -30,7 +30,7 @@ type Option = {
   text: string;
 };
 
-type QuestionType = "mcq" | "writing" | "speaking";
+type QuestionType = "mcq" | "writing" | "speaking" | "match";
 
 interface Question {
   _id?: string;
@@ -51,6 +51,11 @@ interface Question {
   speakingMode?: "audio" | "video" | "oral";
   recordLimitSeconds?: number;
   playAllowed?: number;
+
+  leftItems?: string[];
+  rightItems?: string[];
+
+  imageUrl?: string | null;
 
   marks?: number;
   explanation?: string;
@@ -625,7 +630,10 @@ function QuestionCard({ q, index }: { q: Question; index: number }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
-            Q{index + 1} • {q.questionType.toUpperCase()}
+            Q{index + 1} • {" "}
+            {q.questionType === "match"
+              ? "MATCH THE FOLLOWING"
+              : q.questionType.toUpperCase()}
           </p>
           <p className="text-sm font-medium whitespace-pre-wrap">
             {q.prompt}
@@ -639,32 +647,109 @@ function QuestionCard({ q, index }: { q: Question; index: number }) {
         </div>
       </div>
 
-      {q.questionType === "mcq" && q.options && q.options.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {q.options.map((opt, i) => {
-            const isCorrect =
-              typeof q.correctIndex === "number" && q.correctIndex === i;
-            return (
-              <div
-                key={i}
-                className={`text-xs border rounded px-2 py-1 ${
-                  isCorrect
-                    ? "border-green-500/60 bg-green-50"
-                    : "border-muted bg-muted/40"
-                }`}
-              >
-                <span className="font-semibold mr-1">
-                  {String.fromCharCode(65 + i)}.
-                </span>
-                {opt.text}
-                {isCorrect && (
-                  <span className="ml-2 text-[10px] uppercase text-green-700 font-semibold">
-                    Correct
+      {/* MCQ OPTIONS */}
+      {q.questionType === "mcq" &&
+        q.options &&
+        q.options.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {q.options.map((opt, i) => {
+              const isCorrect =
+                typeof q.correctIndex === "number" && q.correctIndex === i;
+
+              return (
+                <div
+                  key={i}
+                  className={`text-xs border rounded px-2 py-1 ${isCorrect
+                      ? "border-green-500/60 bg-green-50"
+                      : "border-muted bg-muted/40"
+                    }`}
+                >
+                  <span className="font-semibold mr-1">
+                    {String.fromCharCode(65 + i)}.
                   </span>
-                )}
+                  {opt.text}
+                  {isCorrect && (
+                    <span className="ml-2 text-[10px] uppercase text-green-700 font-semibold">
+                      Correct
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+      {/* MATCH THE FOLLOWING */}
+      {q.questionType === "match" && (
+        <div className="mt-3 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Match the items in Column A with the correct items in Column B.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* LEFT COLUMN */}
+            <div>
+              <h4 className="text-xs font-semibold mb-1">Column A</h4>
+              <div className="space-y-1">
+                {(q.leftItems ?? []).map((item, idx) => (
+                  <div
+                    key={`left-${idx}`}
+                    className="text-xs border rounded px-2 py-1 bg-muted/40"
+                  >
+                    <span className="font-semibold mr-1">
+                      {String.fromCharCode(65 + idx)}.
+                    </span>
+                    {item}
+                  </div>
+                ))}
               </div>
-            );
-          })}
+            </div>
+
+            {/* RIGHT COLUMN */}
+            <div>
+              <h4 className="text-xs font-semibold mb-1">Column B</h4>
+              <div className="space-y-1">
+                {(q.rightItems ?? []).map((item, idx) => (
+                  <div
+                    key={`right-${idx}`}
+                    className="text-xs border rounded px-2 py-1 bg-muted/20"
+                  >
+                    <span className="font-semibold mr-1">{idx + 1}.</span>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {q.options && q.options.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {q.options.map((opt, i) => {
+                const isCorrect =
+                  typeof q.correctIndex === "number" && q.correctIndex === i;
+
+                return (
+                  <div
+                    key={i}
+                    className={`text-xs border rounded px-2 py-1 ${isCorrect
+                        ? "border-green-500/60 bg-green-50"
+                        : "border-muted bg-muted/40"
+                      }`}
+                  >
+                    <span className="font-semibold mr-1">
+                      {String.fromCharCode(65 + i)}.
+                    </span>
+                    {opt.text}
+                    {isCorrect && (
+                      <span className="ml-2 text-[10px] uppercase text-green-700 font-semibold">
+                        Correct
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -713,6 +798,25 @@ function QuestionCard({ q, index }: { q: Question; index: number }) {
           )}
         </div>
       )}
+
+
+      {/* Show image for writing + speaking if present */}
+      {(q.questionType === "writing" || q.questionType === "speaking") &&
+        q.imageUrl && (
+          <div className="mt-2">
+            <div className="text-[11px] text-muted-foreground mb-1">
+              Attached Image:
+            </div>
+            <div className="border rounded-md overflow-hidden max-h-72 bg-muted/30 flex items-center justify-center">
+              {/* Standard img for admin preview; you can swap to next/image if you want */}
+              <img
+                src={q.imageUrl}
+                alt="Question illustration"
+                className="max-h-72 w-full object-contain"
+              />
+            </div>
+          </div>
+        )}
 
       {q.explanation && (
         <div className="mt-2 border-t pt-2 text-xs text-muted-foreground">

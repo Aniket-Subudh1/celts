@@ -4,6 +4,7 @@ const geoip = require('geoip-lite');
 const User = require('../models/User');
 
 let DeviceSession;
+const s3Session = ""
 const getDeviceSession = () => {
   if (!DeviceSession) {
     DeviceSession = require('../models/DeviceSession');

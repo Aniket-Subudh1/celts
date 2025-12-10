@@ -363,7 +363,9 @@ router.get("/admin/tests", protect, restrictTo(["admin"]), async (req, res) => {
         endTime: t.endTime || null,
         readingSections: t.readingSections || [],
         listeningSections: t.listeningSections || [],
-        questions: t.questions || [],
+        questions: (t.questions || []).filter(
+          (q) => q && typeof q === "object" && q.questionType
+        ),
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
         assignedBatches: t.assignedBatches || [],
@@ -413,7 +415,9 @@ router.get("/admin/tests/:id", protect, restrictTo(["admin"]), async (req, res) 
       endTime: test.endTime || null,
       readingSections: test.readingSections || [],
       listeningSections: test.listeningSections || [],
-      questions: test.questions || [],
+      questions: (test.questions || []).filter(
+        (q) => q && typeof q === "object" && q.questionType
+      ),
       createdAt: test.createdAt,
       updatedAt: test.updatedAt,
       assignedBatches: test.assignedBatches || [],
