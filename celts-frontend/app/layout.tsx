@@ -1,11 +1,28 @@
-import type React from "react"
-import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
-import { Toaster } from "@/components/ui/sonner"
-import "./globals.css"
+// app/layout.tsx
+import type React from "react";
+import type { Metadata } from "next";
+import { Toaster } from "@/components/ui/sonner";
+import "./globals.css";
+import { Sora, Bungee_Shade, Poppins } from "next/font/google";
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-poppins",
+});
+
+
+const sora = Sora({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-sora",
+});
+
+const bungee = Bungee_Shade({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-bungee",
+});
 
 export const metadata: Metadata = {
   title: "CELTS - English Competency Testing Platform",
@@ -28,19 +45,20 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-icon.png",
   },
-}
+};
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`font-sans antialiased bg-white`} style={{backgroundColor: 'white'}}>
+    // <html lang="en" className={sora.variable}>
+    <html lang="en" className={`${bungee.variable} ${sora.variable}`}>
+      <body className="antialiased bg-sky-200">
         {children}
         <Toaster />
       </body>
     </html>
-  )
+  );
 }

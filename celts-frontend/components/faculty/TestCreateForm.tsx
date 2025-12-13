@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import api from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { StorageInfo } from "./StorageInfo";
+//import { StorageInfo } from "./StorageInfo";
 
 type Option = { text: string };
 
@@ -1518,7 +1518,7 @@ export default function TestCreateForm() {
                   </Button>
                 </div>
 
-                <StorageInfo />
+                {/* <StorageInfo /> */}
 
                 {listeningBlocks.length === 0 && (
                   <div className="text-sm text-slate-500">

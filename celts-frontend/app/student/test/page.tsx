@@ -354,23 +354,23 @@ export default function StudentTestsPage() {
                     shadow-lg
                     hover:shadow-2xl hover:-translate-y-1 
                     transition-all duration-300
-                    min-h-[240px]
+                    min-h-60
                   "
                 >
                   <div className="flex-1 space-y-3">
                     {/* Top Row */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <div className="flex-shrink-0 mt-0.5">
+                        <div className="shrink-0 mt-0.5">
                           {iconForType(test.type)}
                         </div>
-                        <h3 className="text-base md:text-lg font-semibold text-slate-900 break-words leading-tight">
+                        <h3 className="text-base md:text-lg font-semibold text-slate-900 wrap-break-word leading-tight">
                           {test.title}
                         </h3>
                       </div>
 
                       <span
-                        className={`flex-shrink-0 px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap ${statusColorClass(
+                        className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap ${statusColorClass(
                           getCurrentStatus(test),
                           test.attemptStatus,
                           test.evaluationStatus

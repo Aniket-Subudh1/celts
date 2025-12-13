@@ -509,6 +509,32 @@ function TestRunnerContent() {
 
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
 
+  // Per-question timer state & refs
+  const [questionTimeRemaining, setQuestionTimeRemaining] = useState<number | null>(null); // seconds left for current question while recording
+  const questionTimerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const questionTimerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+
+  // Lightbox state for enlarged question images 
+  const [enlargedImageUrl, setEnlargedImageUrl] = useState<string | null>(null);
+
+  function openEnlargedImage(url?: string) {
+    if (url) setEnlargedImageUrl(url);
+  }
+  function closeEnlargedImage() {
+    setEnlargedImageUrl(null);
+  }
+
+  useEffect(() => {
+    if (!enlargedImageUrl) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeEnlargedImage();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [enlargedImageUrl]);
+
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flatQuestions, setFlatQuestions] = useState<{ q: Question; idx: number }[]>([]);
 
@@ -527,7 +553,6 @@ function TestRunnerContent() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (test && !submitting) {
         e.preventDefault();
-        e.returnValue = "";
       }
     };
 
@@ -866,42 +891,47 @@ function TestRunnerContent() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       mediaStreamRef.current = stream;
 
-      if (recordLimit && recordLimit > 0) {
-        setTimeout(() => {
-          if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-            stopRecording();
-            toast.info("Recording Time Limit Reached", {
-              description: `Maximum recording time of ${recordLimit} seconds reached.`,
-              duration: 3000,
-            });
-          }
-        }, recordLimit * 1000);
-      }
-
       setSpeakingState((prev) => ({
         ...prev,
         [key]: { ...(prev[key] || {}), recording: true, liveStream: stream },
       }));
 
+      // Setup video preview (if any)
       setTimeout(() => {
         const video = liveVideoRef.current;
         if (video) {
           video.muted = true;
           video.playsInline = true;
           video.autoplay = true;
-
           try {
             video.srcObject = stream;
           } catch {
             (video as any).srcObject = stream;
           }
-
           video.onloadedmetadata = () => {
             video.play().catch(() => { });
           };
         }
       }, 150);
 
+      // Start per-question timer if recordLimit provided
+      if (recordLimit && recordLimit > 0) {
+        // When timer expires, stop recording and optionally auto-advance
+        startQuestionTimer(recordLimit, () => {
+          toast.info("Recording time for this question has ended.");
+          // stopRecording will clear timers, blobs etc.
+          try {
+            stopRecording();
+          } catch { }
+          // Optionally, auto-move to next question:
+          // If you want to auto-advance uncomment the following:
+          // if (currentIndex < flatQuestions.length - 1) setCurrentIndex((i) => i + 1);
+        });
+      } else {
+        setQuestionTimeRemaining(null);
+      }
+
+      // Setup MediaRecorder
       const mr = new MediaRecorder(stream);
       mediaRecorderRef.current = mr;
       mediaChunksRef.current = [];
@@ -910,29 +940,62 @@ function TestRunnerContent() {
         if (e.data.size > 0) mediaChunksRef.current.push(e.data);
       };
 
+      // mr.onstop = () => {
+      //   const blob = new Blob(mediaChunksRef.current, {
+      //     type: mode === "video" ? "video/webm" : "audio/webm",
+      //   });
+
+      //   const url = URL.createObjectURL(blob);
+      //   speakingBlobsRef.current[key] = blob;
+
+      //   // so the backend (/student/submit/:testId/:skill) can see it.
+      //   setAnswers((prev) => ({
+      //     ...prev,
+      //     [key]: {
+      //       ...(prev[key] || {}),
+      //       uploadedUrl: `local-recording-${Date.now()}`,
+      //     },
+      //   }));
+
+      //   setSpeakingState((prev) => ({
+      //     ...prev,
+      //     [key]: { recording: false, blobUrl: url },
+      //   }));
+
+      //   if (mediaStreamRef.current) {
+      //     mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      //     mediaStreamRef.current = null;
+      //   }
+
+      //   if (liveVideoRef.current) {
+      //     try {
+      //       liveVideoRef.current.srcObject = null;
+      //       liveVideoRef.current.pause();
+      //     } catch { }
+      //   }
+
+      //   // Clear any question timer once recording is saved
+      //   clearQuestionTimer();
+      // };
+
       mr.onstop = () => {
-        const blob = new Blob(mediaChunksRef.current, {
-          type: mode === "video" ? "video/webm" : "audio/webm",
+        // 🎧 AUDIO blob (this is what goes to backend / OpenAI)
+        const audioBlob = new Blob(mediaChunksRef.current, {
+          type: "audio/webm",
         });
 
-        const url = URL.createObjectURL(blob);
-        speakingBlobsRef.current[key] = blob;
+        const audioUrl = URL.createObjectURL(audioBlob);
 
-        // so the backend (/student/submit/:testId/:skill) can see it.
-        setAnswers((prev) => ({
-          ...prev,
-          [key]: {
-            ...(prev[key] || {}),
-            // value doesn't matter; backend just checks that uploadedUrl exists & is non-empty
-            uploadedUrl: `local-recording-${Date.now()}`,
-          },
-        }));
+        // Save ONLY audio blob for backend submission
+        speakingBlobsRef.current[key] = audioBlob;
 
+        // UI state (audio preview)
         setSpeakingState((prev) => ({
           ...prev,
-          [key]: { recording: false, blobUrl: url },
+          [key]: { recording: false, blobUrl: audioUrl },
         }));
 
+        // Cleanup media stream & timers
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach((t) => t.stop());
           mediaStreamRef.current = null;
@@ -944,7 +1007,13 @@ function TestRunnerContent() {
             liveVideoRef.current.pause();
           } catch { }
         }
+
+        mediaChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        clearQuestionTimer();
       };
+
+
 
       mr.start();
     } catch (err: any) {
@@ -952,20 +1021,39 @@ function TestRunnerContent() {
         ...prev,
         [key]: { recording: false, error: err.message },
       }));
+      // ensure timers cleaned up on failure
+      clearQuestionTimer();
     }
   }
+
 
   function stopRecording() {
     const mr = mediaRecorderRef.current;
     if (mr && mr.state !== "inactive") {
-      mr.stop();
+      try {
+        mr.stop();
+      } catch (e) {
+        console.warn("stopRecording: mr.stop() failed", e);
+        // Ensure onstop cleanup if mr.stop threw
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+          mediaStreamRef.current = null;
+        }
+        mediaChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        clearQuestionTimer();
+      }
     } else {
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
         mediaStreamRef.current = null;
       }
+      mediaChunksRef.current = [];
+      mediaRecorderRef.current = null;
+      clearQuestionTimer();
     }
   }
+
 
   function stopAnyRecording() {
     try {
@@ -986,7 +1074,52 @@ function TestRunnerContent() {
     }
     mediaChunksRef.current = [];
     mediaRecorderRef.current = null;
+    clearQuestionTimer();
   }
+
+
+
+  function clearQuestionTimer() {
+    if (questionTimerIntervalRef.current) {
+      clearInterval(questionTimerIntervalRef.current);
+      questionTimerIntervalRef.current = null;
+    }
+    if (questionTimerTimeoutRef.current) {
+      clearTimeout(questionTimerTimeoutRef.current);
+      questionTimerTimeoutRef.current = null;
+    }
+    setQuestionTimeRemaining(null);
+  }
+
+  /**
+   * startQuestionTimer(seconds, onExpire)
+   * - seconds: number of seconds for this question
+   * - onExpire: callback when time ends
+   */
+  function startQuestionTimer(seconds: number, onExpire: () => void) {
+    clearQuestionTimer();
+
+    if (!seconds || Number.isNaN(seconds) || seconds <= 0) {
+      setQuestionTimeRemaining(null);
+      return;
+    }
+
+    let remaining = Math.floor(seconds);
+    setQuestionTimeRemaining(remaining);
+
+    // decrement every 1s for UI
+    questionTimerIntervalRef.current = setInterval(() => {
+      remaining = Math.max(0, remaining - 1);
+      setQuestionTimeRemaining(remaining);
+    }, 1000);
+
+    // final timeout to call onExpire exactly after `seconds`
+    questionTimerTimeoutRef.current = setTimeout(() => {
+      clearQuestionTimer();
+      onExpire();
+    }, remaining * 1000);
+  }
+
 
   function toggleMcqSelection(key: string, optionIndex: number) {
     setAnswers((prev) => {
@@ -1097,13 +1230,24 @@ function TestRunnerContent() {
 
             {q.imageUrl && (
               <div className="mt-4 flex justify-center">
-                <img
-                  src={q.imageUrl}
-                  alt={q.imageAlt || "Question image"}
-                  className="max-h-[360px] w-auto rounded-lg border border-slate-200 object-contain shadow-sm bg-white"
-                />
+                <button
+                  type="button"
+                  onClick={() => openEnlargedImage(q.imageUrl)}
+                  aria-label={q.imageAlt || "Open image viewer"}
+                  className="rounded-lg overflow-hidden border border-slate-200 shadow-sm bg-white"
+                  style={{ padding: 4 }}
+                >
+                  <img
+                    src={q.imageUrl}
+                    alt={q.imageAlt || "Question image"}
+                    className="max-h-[420px] w-auto object-contain block cursor-zoom-in transition-transform duration-150 ease-out"
+                    style={{ display: "block", maxWidth: "100%" }}
+                    draggable={false}
+                  />
+                </button>
               </div>
             )}
+
           </div>
         </div>
       );
@@ -1248,13 +1392,24 @@ function TestRunnerContent() {
         <div>
           {q.imageUrl && (
             <div className="mb-4 flex justify-center">
-              <img
-                src={q.imageUrl}
-                alt={q.imageAlt || "Question image"}
-                className="max-h-[260px] w-auto rounded-lg border border-slate-200 object-contain shadow-sm bg-white"
-              />
+              <button
+                type="button"
+                onClick={() => openEnlargedImage(q.imageUrl)}
+                aria-label={q.imageAlt || "Open image viewer"}
+                className="rounded-lg overflow-hidden border border-slate-200 shadow-sm bg-white"
+                style={{ padding: 4 }}
+              >
+                <img
+                  src={q.imageUrl}
+                  alt={q.imageAlt || "Question image"}
+                  className="max-h-[420px] w-auto object-contain block cursor-zoom-in transition-transform duration-150 ease-out"
+                  style={{ display: "block", maxWidth: "100%" }}
+                  draggable={false}
+                />
+              </button>
             </div>
           )}
+
 
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-slate-800">Write your answer</h3>
@@ -1301,20 +1456,36 @@ function TestRunnerContent() {
         <div>
           {q.imageUrl && (
             <div className="mb-4 flex justify-center">
-              <img
-                src={q.imageUrl}
-                alt={q.imageAlt || "Question image"}
-                className="max-h-[260px] w-auto rounded-lg border border-slate-200 object-contain shadow-sm bg-white"
-              />
+              <button
+                type="button"
+                onClick={() => openEnlargedImage(q.imageUrl)}
+                aria-label={q.imageAlt || "Open image viewer"}
+                className="rounded-lg overflow-hidden border border-slate-200 shadow-sm bg-white"
+                style={{ padding: 4 }}
+              >
+                <img
+                  src={q.imageUrl}
+                  alt={q.imageAlt || "Question image"}
+                  className="max-h-[420px] w-auto object-contain block cursor-zoom-in transition-transform duration-150 ease-out"
+                  style={{ display: "block", maxWidth: "100%" }}
+                  draggable={false}
+                />
+              </button>
             </div>
           )}
+
 
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-slate-800">Record your response</h3>
               <p className="text-sm text-slate-500 mt-1">Mode: {q.speakingMode || "audio"}</p>
             </div>
-            <div className="text-sm text-slate-600">Time: {q.recordLimitSeconds ?? "-"}s</div>
+            <div className="text-sm text-slate-600">Time per question:{" "}
+              <span className={`${speaking?.recording ? "font-bold text-red-600" : ""}`}>
+                {speaking?.recording
+                  ? (questionTimeRemaining != null ? `${questionTimeRemaining}s` : `${q.recordLimitSeconds ?? "-"}s`)
+                  : `${q.recordLimitSeconds ?? "-"}s`}
+              </span></div>
           </div>
 
           <div className="mb-4">
@@ -1465,28 +1636,6 @@ function TestRunnerContent() {
           .map((q, idx) => ({ q, idx }))
           .filter((x) => x.q.questionType === "speaking");
 
-        // Collect all recorded blobs in question order
-        const speakingBlobs: Blob[] = [];
-        for (const { q, idx } of speakingQuestions) {
-          const key = qKey(q, idx);
-          const blob = speakingBlobsRef.current[key];
-          if (blob) {
-            speakingBlobs.push(blob);
-          }
-        }
-
-        // Merge all blobs into a single WebM (simple concatenation)
-        let speakingBlob: Blob | undefined;
-        if (speakingBlobs.length === 1) {
-          speakingBlob = speakingBlobs[0];
-        } else if (speakingBlobs.length > 1) {
-          speakingBlob = new Blob(speakingBlobs, { type: "audio/webm" });
-        }
-
-        if (!speakingBlob && !autoSubmit) {
-          console.log('Submitting speaking test without any recording - user confirmed');
-        }
-
         setSubmitMessage("Test submitted! Redirecting...");
 
         if (document.fullscreenElement) {
@@ -1499,14 +1648,24 @@ function TestRunnerContent() {
           autoSubmit: autoSubmit ? "true" : "false",
           submissionId: "processing",
         });
+
         router.push(`/student/test/complete?${params.toString()}`);
 
         backgroundSubmissionTimeoutRef.current = setTimeout(async () => {
           try {
             const form = new FormData();
-            if (speakingBlob) {
-              form.append("media", speakingBlob, "speaking.webm");
+
+            // ✅ APPEND EACH QUESTION'S AUDIO SEPARATELY
+            for (const { q, idx } of speakingQuestions) {
+              const key = qKey(q, idx);
+              const blob = speakingBlobsRef.current[key];
+
+              if (blob) {
+                form.append(`media_${key}`, blob, `speaking_${key}.webm`);
+              }
             }
+
+            // metadata
             form.append("response", JSON.stringify(answers));
             form.append("evaluationPayload", JSON.stringify(evaluationPayload));
 
@@ -1519,7 +1678,7 @@ function TestRunnerContent() {
               body: form,
             });
 
-            // Mark test attempt as completed
+            // mark attempt completed
             await fetch(`${API}/student/tests/${test._id}/end`, {
               method: "POST",
               headers: {
@@ -1533,9 +1692,9 @@ function TestRunnerContent() {
               }),
             });
 
-            console.log('Background submission completed for speaking test');
+            console.log("Background submission completed for speaking test");
           } catch (error) {
-            console.error('Background submission failed:', error);
+            console.error("Background submission failed:", error);
           } finally {
             backgroundSubmissionTimeoutRef.current = null;
           }
@@ -1543,6 +1702,7 @@ function TestRunnerContent() {
 
         return;
       }
+
       // -------------------------------------------------------------------
 
       // Non-speaking skills (reading / listening / writing)
@@ -1624,6 +1784,8 @@ function TestRunnerContent() {
   if (process.env.NODE_ENV === "development") {
     console.log("Render state:", { testId, loading, error: !!error, hasTest: !!test, hasStarted });
   }
+
+
 
   if (!testId) {
     return (
@@ -2119,6 +2281,41 @@ function TestRunnerContent() {
           </div>
         </div>
       </div>
+
+      {/* --- Image lightbox/modal --- */}
+      {enlargedImageUrl && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          onClick={closeEnlargedImage}
+        >
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
+          <div
+            className="relative z-10 max-w-[95vw] max-h-[95vh] rounded-lg overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={closeEnlargedImage}
+              aria-label="Close image"
+              className="absolute top-3 right-3 z-20 bg-white/90 rounded-full p-2 shadow hover:bg-white"
+              style={{ backdropFilter: "blur(4px)" }}
+            >
+              ✕
+            </button>
+
+            <div className="flex items-center justify-center p-4 bg-black rounded-lg">
+              <img
+                src={enlargedImageUrl}
+                alt="Enlarged question"
+                className="max-w-[calc(100vw-4rem)] max-h-[calc(100vh-4rem)] object-contain"
+                draggable={false}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
     </>
   );
 }

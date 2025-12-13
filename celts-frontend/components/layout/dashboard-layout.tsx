@@ -17,7 +17,7 @@ export function DashboardLayout({ children, navItems, sidebarHeader, userName }:
       <Sidebar items={navItems} header={sidebarHeader} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header userName={userName} />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-sky-50">
           <div className="p-6">{children}</div>
         </main>
       </div>
