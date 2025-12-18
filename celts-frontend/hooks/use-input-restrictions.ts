@@ -20,7 +20,7 @@ export function useInputRestrictions(options: UseInputRestrictionsOptions = {}) 
     onViolation,
     onCriticalViolation,
     enabled = true,
-    warningsBeforeAutoSubmit = 2,
+    warningsBeforeAutoSubmit = 6,
   } = options;
 
   const [showWarningDialog, setShowWarningDialog] = useState(false);
@@ -40,8 +40,8 @@ export function useInputRestrictions(options: UseInputRestrictionsOptions = {}) 
       lastWarningTime: 0,
     };
 
-    // Prevent spam warnings (minimum 2 seconds between same violation type)
-    if (now - currentWarning.lastWarningTime < 2000) {
+    // Prevent spam warnings (minimum 3 seconds between same violation type)
+    if (now - currentWarning.lastWarningTime < 3000) {
       return;
     }
 

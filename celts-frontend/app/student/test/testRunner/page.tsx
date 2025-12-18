@@ -472,7 +472,7 @@ function TestRunnerContent() {
     enabled:
       !!testId && !!test && hasStarted && deviceSessionCreated && !submitting && !isSubmissionInProgress && !isAutoSubmitting,
     autoSubmitOnViolation: true,
-    warningsBeforeAutoSubmit: 2,
+    warningsBeforeAutoSubmit: 6,
     sessionToken,
     attemptId: attemptId || undefined,
     isSubmissionInProgress,

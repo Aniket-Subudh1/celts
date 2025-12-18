@@ -16,6 +16,11 @@ import {
 import { Plus, Edit2, Trash2, Lock } from "lucide-react";
 import api from "@/lib/api";
 
+
+const MAX_VISIBLE_ROWS = 15;
+const ROW_HEIGHT = 56; 
+const TABLE_BODY_HEIGHT = MAX_VISIBLE_ROWS * ROW_HEIGHT;
+
 interface User {
   id: string;
   name: string;
@@ -64,6 +69,10 @@ export function UserManagement() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+
 
   // Fetch all users
   const fetchUsers = useCallback(async () => {
@@ -154,20 +163,20 @@ export function UserManagement() {
         prev.map((u) =>
           u.id === id
             ? {
-                id: updated._id || updated.id || id,
-                name: updated.name,
-                email: updated.email,
-                systemId: updated.systemId,
-                role: updated.role,
-                status: normalizeStatus(
-                  updated.isActive === false
-                    ? "inactive"
-                    : updated.status ?? "active"
-                ),
-                joinDate: updated.createdAt
-                  ? new Date(updated.createdAt).toISOString().slice(0, 10)
-                  : u.joinDate,
-              }
+              id: updated._id || updated.id || id,
+              name: updated.name,
+              email: updated.email,
+              systemId: updated.systemId,
+              role: updated.role,
+              status: normalizeStatus(
+                updated.isActive === false
+                  ? "inactive"
+                  : updated.status ?? "active"
+              ),
+              joinDate: updated.createdAt
+                ? new Date(updated.createdAt).toISOString().slice(0, 10)
+                : u.joinDate,
+            }
             : u
         )
       );
@@ -251,7 +260,7 @@ export function UserManagement() {
         role: (created?.role || newRole) as any,
         status: normalizeStatus(
           created?.status ??
-            (created?.isActive === false ? "inactive" : "active")
+          (created?.isActive === false ? "inactive" : "active")
         ),
         joinDate: created?.createdAt
           ? new Date(created.createdAt).toISOString().slice(0, 10)
@@ -360,8 +369,7 @@ export function UserManagement() {
       const count = importedUsers.length;
       setBulkIsError(false);
       setBulkMessage(
-        `Bulk upload successful (${count} user${
-          count === 1 ? "" : "s"
+        `Bulk upload successful (${count} user${count === 1 ? "" : "s"
         } imported).`
       );
 
@@ -379,104 +387,150 @@ export function UserManagement() {
     list: User[],
     search: string,
     setSearch: (v: string) => void
-  ) => (
-    <Card className="overflow-hidden">
-      <div className="flex justify-between items-center px-6 py-3 border-b bg-muted">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <Input
-          placeholder={`Search ${title.toLowerCase()}...`}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs"
-        />
-      </div>
+  ) => {
+    const isStudentTable = title === "Students";
 
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-muted">
-            <tr className="border-b border-border">
-              <th className="px-6 py-3 text-left text-sm font-semibold">
-                Name
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">
-                Email
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">
-                System ID
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">
-                Role
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">
-                Join Date
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">
-                Actions
-              </th>
-            </tr>
-          </thead>
+    return (
+      <Card className="overflow-hidden">
+        {/* Header */}
+        <div className="flex justify-between items-center px-6 py-3 border-b bg-muted">
+          <h2 className="text-lg font-semibold">{title}</h2>
 
-          <tbody>
-            {loadingUsers ? (
-              <tr>
-                <td colSpan={6} className="p-6 text-center">
-                  Loading...
-                </td>
+          <div className="flex items-center gap-2">
+            {isStudentTable && selectedStudentIds.length > 0 && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setIsBulkDeleteOpen(true)}
+              >
+                Delete Selected ({selectedStudentIds.length})
+              </Button>
+            )}
+
+            <Input
+              placeholder={`Search ${title.toLowerCase()}...`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="max-w-xs"
+            />
+          </div>
+        </div>
+
+        {/* Scrollable Table */}
+        <div
+          className="overflow-y-auto"
+          style={{ maxHeight: TABLE_BODY_HEIGHT }}
+        >
+          <table className="w-full">
+            <thead className="bg-muted sticky top-0 z-10">
+              <tr className="border-b">
+                {isStudentTable && (
+                  <th className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={
+                        list.length > 0 &&
+                        list.every((u) => selectedStudentIds.includes(u.id))
+                      }
+                      onChange={(e) =>
+                        setSelectedStudentIds(
+                          e.target.checked ? list.map((u) => u.id) : []
+                        )
+                      }
+                    />
+                  </th>
+                )}
+                <th className="px-6 py-3 text-left text-sm font-semibold">Name</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">Email</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">
+                  System ID
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">Role</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">
+                  Join Date
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">
+                  Actions
+                </th>
               </tr>
-            ) : list.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="p-6 text-center text-sm text-muted-foreground"
-                >
-                  No data found.
-                </td>
-              </tr>
-            ) : (
-              list.map((user) => (
-                <tr key={user.id} className="border-b hover:bg-muted/30">
-                  <td className="px-6 py-4 text-sm">{user.name}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {user.email}
-                  </td>
-                  <td className="px-6 py-4 text-sm">{user.systemId}</td>
-                  <td className="px-6 py-4 text-sm capitalize">{user.role}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {user.joinDate}
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(user)}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openPasswordDialog(user)}
-                      >
-                        <Lock className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteUser(user.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+            </thead>
+
+            <tbody>
+              {loadingUsers ? (
+                <tr>
+                  <td colSpan={7} className="p-6 text-center">
+                    Loading...
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  );
+              ) : list.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                    No data found.
+                  </td>
+                </tr>
+              ) : (
+                list.map((user) => (
+                  <tr key={user.id} className="border-b hover:bg-muted/30">
+                    {isStudentTable && (
+                      <td className="px-4 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedStudentIds.includes(user.id)}
+                          onChange={(e) =>
+                            setSelectedStudentIds((prev) =>
+                              e.target.checked
+                                ? [...prev, user.id]
+                                : prev.filter((id) => id !== user.id)
+                            )
+                          }
+                        />
+                      </td>
+                    )}
+
+                    <td className="px-6 py-4 text-sm">{user.name}</td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {user.email}
+                    </td>
+                    <td className="px-6 py-4 text-sm">{user.systemId}</td>
+                    <td className="px-6 py-4 text-sm capitalize">{user.role}</td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {user.joinDate}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(user)}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openPasswordDialog(user)}
+                        >
+                          <Lock className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteUser(user.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    );
+  };
+
 
   return (
     <div className="space-y-4">
@@ -601,9 +655,8 @@ export function UserManagement() {
       {bulkLoading && <div className="text-sm">Uploading CSV...</div>}
       {bulkMessage && (
         <div
-          className={`text-sm ${
-            bulkIsError ? "text-red-700" : "text-green-700"
-          }`}
+          className={`text-sm ${bulkIsError ? "text-red-700" : "text-green-700"
+            }`}
         >
           {bulkMessage}
         </div>
@@ -735,6 +788,47 @@ export function UserManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-600">
+              Delete Selected Students
+            </DialogTitle>
+            <DialogDescription>
+              You are about to permanently delete{" "}
+              <strong>{selectedStudentIds.length}</strong> student(s).
+              <br />
+              This action <strong>cannot</strong> be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBulkDeleteOpen(false)}>
+              Cancel
+            </Button>
+
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                for (const id of selectedStudentIds) {
+                  await api.apiDelete(`/admin/users/${id}`);
+                }
+
+                setUsers((prev) =>
+                  prev.filter((u) => !selectedStudentIds.includes(u.id))
+                );
+
+                setSelectedStudentIds([]);
+                setIsBulkDeleteOpen(false);
+              }}
+            >
+              Yes, Delete Permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
