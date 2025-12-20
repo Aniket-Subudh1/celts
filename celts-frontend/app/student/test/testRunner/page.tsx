@@ -472,7 +472,7 @@ function TestRunnerContent() {
     enabled:
       !!testId && !!test && hasStarted && deviceSessionCreated && !submitting && !isSubmissionInProgress && !isAutoSubmitting,
     autoSubmitOnViolation: true,
-    warningsBeforeAutoSubmit: 6,
+    warningsBeforeAutoSubmit: 10,
     sessionToken,
     attemptId: attemptId || undefined,
     isSubmissionInProgress,
@@ -485,7 +485,7 @@ function TestRunnerContent() {
 
   useEffect(() => {
     if (test?.timeLimitMinutes && hasStarted && !isAutoSubmitting) {
-      const warningThresholds = [5, 10, 15, 30];
+      const warningThresholds = [5, 10, 15, 20];
 
       warningThresholds.forEach((threshold) => {
         if (timeRemaining && timeRemaining > 0) {
