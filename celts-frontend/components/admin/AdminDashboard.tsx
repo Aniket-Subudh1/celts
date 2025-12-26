@@ -75,8 +75,10 @@ function getDescription(label: string) {
       return "Manage users, roles & accounts";
     case "Batch Management":
       return "View & configure student batches";
+      case "Create Test":
+      return "Create, View and Edit your Tests";
     case "View Test":
-      return "View and Edit your Tests";
+      return "View Faculty created Tests";
     case "Test Attempts":
       return "View Test Attempt Details";
     case "Permissions":

@@ -25,7 +25,7 @@ const testSecurityRoutes = require('./testSecurity');
 const testAttempts = require("../models/TestAttempt");
 const adminUserRoutes = require('./adminUserRoutes');
 const csvuploadRoutes = require('./adminUserRoutes');
-
+const adminTestSetsRoutes = require('./adminTestSets');
 
 
 
@@ -41,7 +41,8 @@ router.use('/media', mediaRoutes);
 router.use('/faculty', facultyRoutes);
 router.use('/student', studentRoutes);
 router.use('/admin/batches', adminBatchRoutes);
-router.use('/teacher/tests', teacherTestsRoutes);
+router.use('/teacher/tests', teacherTestsRoutes);  //faculty access
+router.use('/admin/testSet', adminTestSetsRoutes); // admin access
 router.use('/student', studentStatsRoutes);
 router.use('/studentStats', studentStatsRoutes);
 router.use("/admin", adminAuditRoutes);
