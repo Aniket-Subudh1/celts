@@ -177,6 +177,7 @@ The "examiner_summary" MUST be an in-depth evaluation that:
 - Mentions the overall band clearly.
 - Explicitly comments on Task Response, Coherence and Cohesion, Lexical Resource, and Grammatical Range and Accuracy.
 - Is written in paragraphs or clear sentences, not bullet points, but still concise and focused.
+- Explains what the candidate need to improve, based ONLY on the provided answer so as to increase the canidate bandScore in future.
 `.trim();
 
   const res = await ai.chat.completions.create({
@@ -268,6 +269,16 @@ Return ONLY valid json:
     "pronunciation": number
   }
 }
+  Rules:
+- "band_score" must be between 1 and 9.0 (it may be .0 or .5).
+- Each criteria "score" must also be between 1 and 9.0 where possible.
+- Feedback must be concise, IELTS-style, impersonal, and clearly linked to the band scores.
+
+The "examiner_summary" MUST be an in-depth evaluation that:
+- Mentions the overall band clearly.
+- Explicitly comments on fluency, vocabulary, grammer and pronunciation
+- Is written in paragraphs or clear sentences, not bullet points, but still concise and focused.
+- Explains what the candidate need to improve, based ONLY on the provided answer so as to increase the canidate bandScore in future.
 `.trim();
 
     const res = await ai.chat.completions.create({
@@ -306,7 +317,7 @@ Return ONLY valid json:
       ? roundHalf(bandScores.reduce((a, b) => a + b, 0) / bandScores.length)
       : 0;
 
-   const avg = (arr) =>
+  const avg = (arr) =>
     arr.length ? roundHalf(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
 
   const overallCriteria = {
