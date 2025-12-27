@@ -69,6 +69,14 @@ export function BatchManagement() {
   const [studentsDialogLoading, setStudentsDialogLoading] = useState(false);
   const [studentsDialogError, setStudentsDialogError] = useState<string | null>(null);
 
+  // table filters
+  const [filterName, setFilterName] = useState("");
+  const [filterProgram, setFilterProgram] = useState("");
+  const [filterYear, setFilterYear] = useState("");
+  const [filterSection, setFilterSection] = useState("");
+  const [filterFaculty, setFilterFaculty] = useState("");
+
+
   const filteredStudentOptions = useMemo(() => {
     const q = studentSearch.trim().toLowerCase();
     if (!q) return studentOptions;
@@ -159,7 +167,7 @@ export function BatchManagement() {
         systemId: u.systemId,
       }));
       setFacultyOptions(opts);
-    } catch {}
+    } catch { }
   }
 
   async function fetchStudentOptions() {
@@ -172,7 +180,7 @@ export function BatchManagement() {
         systemId: u.systemId,
       }));
       setStudentOptions(opts);
-    } catch {}
+    } catch { }
   }
 
   // Create batch
@@ -374,6 +382,49 @@ export function BatchManagement() {
       alert(err.message || "Error unassigning student");
     }
   };
+
+
+  const filteredBatches = useMemo(() => {
+    return batches.filter((b) => {
+      const nameMatch = b.name
+        ?.toLowerCase()
+        .includes(filterName.toLowerCase());
+
+      const programMatch = (b.program || "")
+        .toLowerCase()
+        .includes(filterProgram.toLowerCase());
+
+      const yearMatch = filterYear
+        ? String(b.year || "").includes(filterYear)
+        : true;
+
+      const sectionMatch = (b.section || "")
+        .toLowerCase()
+        .includes(filterSection.toLowerCase());
+
+      const facultyMatch = (b.faculty || [])
+        .join(" ")
+        .toLowerCase()
+        .includes(filterFaculty.toLowerCase());
+
+      return (
+        nameMatch &&
+        programMatch &&
+        yearMatch &&
+        sectionMatch &&
+        facultyMatch
+      );
+    });
+  }, [
+    batches,
+    filterName,
+    filterProgram,
+    filterYear,
+    filterSection,
+    filterFaculty,
+  ]);
+
+
 
   return (
     <div className="space-y-4">
@@ -601,8 +652,39 @@ export function BatchManagement() {
         )}
       </Card>
 
+      <Card className="p-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+          <Input
+            placeholder="Filter Name"
+            value={filterName}
+            onChange={(e) => setFilterName(e.target.value)}
+          />
+          <Input
+            placeholder="Filter Program"
+            value={filterProgram}
+            onChange={(e) => setFilterProgram(e.target.value)}
+          />
+          <Input
+            placeholder="Filter Year"
+            value={filterYear}
+            onChange={(e) => setFilterYear(e.target.value)}
+          />
+          <Input
+            placeholder="Filter Section"
+            value={filterSection}
+            onChange={(e) => setFilterSection(e.target.value)}
+          />
+          <Input
+            placeholder="Filter Faculty"
+            value={filterFaculty}
+            onChange={(e) => setFilterFaculty(e.target.value)}
+          />
+        </div>
+      </Card>
+
+
       {/* TABLE FOR EXISTING BATCHES */}
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto max-h-[420px] overflow-y-auto">
         <table className="w-full border-collapse">
           <thead className="bg-gray-100 border-b">
             <tr>
@@ -629,7 +711,7 @@ export function BatchManagement() {
                 </td>
               </tr>
             ) : (
-              batches.map((b) => (
+              filteredBatches.map((b) => (
                 <tr
                   key={b._id}
                   className="border-b hover:bg-gray-50 transition-colors"
