@@ -11,6 +11,9 @@ import api from "@/lib/api";
 import { useTestProctoring } from "@/hooks/use-test-proctoring";
 import { ViolationDialog } from "@/components/ViolationDialog";
 import { ViolationWarningDialog } from "@/components/ViolationWarningDialog";
+import { shuffleQuestionsBySection } from "@/utils/questionShuffle";
+
+
 
 type TestType = "reading" | "listening" | "writing" | "speaking" | string;
 type Option = { text: string };
@@ -637,16 +640,51 @@ function TestRunnerContent() {
     return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
+  // useEffect(() => {
+  //   if (test) {
+  //     const flat: { q: Question; idx: number }[] = test.questions.map((q, idx) => ({ q, idx }));
+  //     setFlatQuestions(flat);
+  //     setCurrentIndex(0);
+  //   } else {
+  //     setFlatQuestions([]);
+  //     setCurrentIndex(0);
+  //   }
+  // }, [test]);
+
+
   useEffect(() => {
-    if (test) {
-      const flat: { q: Question; idx: number }[] = test.questions.map((q, idx) => ({ q, idx }));
-      setFlatQuestions(flat);
-      setCurrentIndex(0);
-    } else {
-      setFlatQuestions([]);
-      setCurrentIndex(0);
-    }
-  }, [test]);
+  if (!test) {
+    setFlatQuestions([]);
+    setCurrentIndex(0);
+    return;
+  }
+
+  if (!attemptId && !sessionToken) {
+    return;
+  }
+
+  const seedBase = `${test._id}-${test.type}-${attemptId || sessionToken}`;
+
+  // Shuffle questions safely within their sections
+  const shuffledQuestions = shuffleQuestionsBySection(
+    test.questions,
+    seedBase
+  );
+
+  // Preserve original indices (CRITICAL for answers & submission)
+  const flat = shuffledQuestions.map((q) => {
+    const originalIndex = test.questions.findIndex(
+      (oq) => oq._id === q._id
+    );
+    return { q, idx: originalIndex };
+  });
+
+  // Apply shuffled order
+  setFlatQuestions(flat);
+  setCurrentIndex(0);
+}, [test, attemptId, sessionToken]);
+
+
 
   const handleStartTest = async () => {
     console.log("Starting test...");
