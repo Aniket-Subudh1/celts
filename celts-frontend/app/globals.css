@@ -75,8 +75,16 @@
 }
 
 @theme inline {
-  --font-sans: "Geist", "Geist Fallback";
-  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  /* --font-sans: var(--font-poppins), sans-serif;
+  --font-mono: var(--font-poppins), monospace; */
+/* --font-sans: var(--font-sora), sans-serif;
+--font-title: var(--font-bungee), cursive; */
+--font-sans: var(--font-sora), sans-serif;
+--font-title: var(--font-bungee), cursive;
+
+
+
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -119,11 +127,39 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-white text-gray-900;
     background-color: white !important;
   }
+
   html {
     background-color: white !important;
   }
+  
+}
+
+/* Ultra-light mobile-like WHITE scrollbar */
+*::-webkit-scrollbar {
+  width: 4px;       /* thin like mobile */
+  height: 4px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(161, 160, 160, 0.45);   /* soft white */
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(116, 114, 114, 0.65);   /* brighter on hover */
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(122, 120, 120, 0.45) transparent;
 }

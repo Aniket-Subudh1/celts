@@ -261,7 +261,7 @@ export function FacultyStats() {
             Batch Analytics
           </h1>
           <p className="text-muted-foreground text-sm">
-            View IELTS band performance, batch coverage, and student attempts.
+            View CELTS band performance, batch coverage, and student attempts.
           </p>
         </div>
       </div>

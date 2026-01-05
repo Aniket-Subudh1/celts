@@ -6,6 +6,7 @@ export const navItems = [
   { href: "/admin/userManagement", label: "User Management", icon: <Users className="w-5 h-5" /> },
   { href: "/admin/batches", label: "Batch Management", icon: <School className="w-5 h-5" /> },
   { href: "/admin/permissions", label: "Permissions", icon: <FileText className="w-5 h-5" /> },
+  { href: "/admin/tests", label: "Create Your Test", icon: <Book className="w-5 h-5" /> },
   { href: "/admin/viewTest", label: "View Test", icon: <Book className="w-5 h-5" /> },
   { href: "/admin/testAttempts", label: "Test Attempts", icon: <AlertTriangle className="w-5 h-5" /> },
   { href: "/admin/analytics", label: "Analytics", icon: <TrendingUp className="w-5 h-5" /> },

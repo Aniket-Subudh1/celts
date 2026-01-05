@@ -392,8 +392,8 @@ export default function FacultyDashboardPage() {
                                     <YAxis allowDecimals={false} />
                                     <Tooltip />
                                     <Legend />
-                                    <Bar dataKey="total" name="Total students" />
-                                    <Bar dataKey="attempted" name="Attempted test" />
+                                    <Bar dataKey="total" name="Total students" fill="#6366F1"/>
+                                    <Bar dataKey="attempted" name="Attempted test" fill="#22C55E"/>
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -424,11 +424,11 @@ export default function FacultyDashboardPage() {
                                     <YAxis domain={[0, 9]} />
                                     <Tooltip />
                                     <Legend />
-                                    <Bar dataKey="overall" name="Overall" />
-                                    <Bar dataKey="reading" name="R" />
-                                    <Bar dataKey="listening" name="L" />
-                                    <Bar dataKey="writing" name="W" />
-                                    <Bar dataKey="speaking" name="S" />
+                                    <Bar dataKey="overall" name="Overall"  />
+                                    <Bar dataKey="reading" name="R" fill="#8B5CF6"/>
+                                    <Bar dataKey="listening" name="L" fill="#F59E0B"/>
+                                    <Bar dataKey="writing" name="W" fill="#EF4444"/>
+                                    <Bar dataKey="speaking" name="S" fill="#10B981"/>
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>

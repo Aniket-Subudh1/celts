@@ -72,13 +72,21 @@ export function AdminDashboardPage() {
 function getDescription(label: string) {
   switch (label) {
     case "User Management":
-      return "Manage users, roles & accounts.";
+      return "Manage users, roles & accounts";
     case "Batch Management":
-      return "View & configure student batches.";
+      return "View & configure student batches";
+      case "Create Test":
+      return "Create, View and Edit your Tests";
+    case "View Test":
+      return "View Faculty created Tests";
+    case "Test Attempts":
+      return "View Test Attempt Details";
     case "Permissions":
-      return "Control access levels and privileges.";
+      return "Control access levels and privileges";
     case "Analytics":
-      return "Insights into users, tests & performance.";
+      return "Insights into users, tests & performance";
+    case "Audit Log":
+      return "Check the Audit Log"; 
     default:
       return "Open module.";
   }

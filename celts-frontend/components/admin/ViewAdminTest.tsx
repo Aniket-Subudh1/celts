@@ -79,7 +79,7 @@ type Batch = { _id: string; name: string };
 
 const ROMAN = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii"];
 
-export function ViewTestForm() {
+export function ViewAdminTest() {
   const router = useRouter();
   const [tests, setTests] = useState<TestSet[]>([]);
   const [loading, setLoading] = useState(false);
@@ -109,7 +109,7 @@ export function ViewTestForm() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.apiGet("/teacher/tests?mine=true");
+      const res = await api.apiGet("/admin/testSet");
       if (!res.ok) {
         console.error("[fetchTests] error:", res);
         setError(res.error?.message || "Failed to fetch tests");
@@ -128,10 +128,9 @@ export function ViewTestForm() {
 
   async function fetchBatches() {
     try {
-      let res = await api.apiGet("/faculty/batches");
-      if (!res.ok) res = await api.apiGet("/admin/batches");
+      let res = await api.apiGet("/admin/batches");
       if (!res.ok) {
-        console.warn("[fetchBatches] both endpoints failed", res);
+        console.warn("[fetchBatches] endpoints failed", res);
         setBatches([]);
         return;
       }
@@ -172,9 +171,7 @@ export function ViewTestForm() {
 
       console.log("[Assign] update test", assigningTest._id, newAssigned);
 
-      const res = await api.apiPut(`/teacher/tests/${assigningTest._id}`, {
-        assignedBatches: newAssigned,
-      });
+      const res = await api.apiPatch(`/admin/testSet/${assigningTest._id}/assign-batches`, { batchIds: newAssigned });
 
       setAssignLoading(false);
 
@@ -182,8 +179,8 @@ export function ViewTestForm() {
         console.error("[Assign] server error:", res);
         alert(
           res.error?.message ||
-            res.data?.message ||
-            `Failed to assign (status ${res.status})`
+          res.data?.message ||
+          `Failed to assign (status ${res.status})`
         );
         return;
       }
@@ -211,9 +208,8 @@ export function ViewTestForm() {
       const newAssigned = (test.assignedBatches || []).filter(
         (b) => b !== batchId
       );
-      const res = await api.apiPut(`/teacher/tests/${test._id}`, {
-        assignedBatches: newAssigned,
-      });
+      const res = await api.apiPatch(`/admin/testSet/${test._id}/assign-batches`, { batchIds: newAssigned });
+
       if (!res.ok) {
         console.error("[removeBatch] server error:", res);
         alert(res.error?.message || "Failed to update assignment");
@@ -237,7 +233,7 @@ export function ViewTestForm() {
 
   const openQuestionsDialog = async (t: TestSet) => {
     try {
-      const res = await api.apiGet(`/teacher/tests/${t._id}`);
+      const res = await api.apiGet(`/admin/testSet/${t._id}`);
       if (!res.ok) {
         console.error("[openQuestionsDialog] failed:", res);
         alert(res.error?.message || "Failed to fetch test details");
@@ -248,64 +244,64 @@ export function ViewTestForm() {
 
       const normalizedQuestions: Question[] = Array.isArray(fullTest.questions)
         ? fullTest.questions.map((qAny: any) => {
-            const q: any = { ...(qAny || {}) };
+          const q: any = { ...(qAny || {}) };
 
-            // Ensure a questionType
-            if (!q.questionType) {
-              if (Array.isArray(q.options) && q.options.length > 0)
-                q.questionType = "mcq";
-              else q.questionType = "mcq";
+          // Ensure a questionType
+          if (!q.questionType) {
+            if (Array.isArray(q.options) && q.options.length > 0)
+              q.questionType = "mcq";
+            else q.questionType = "mcq";
+          }
+
+          // Normalize MCQ
+          if (q.questionType === "mcq") {
+            q.options =
+              Array.isArray(q.options) && q.options.length > 0
+                ? q.options
+                : [{ text: "" }, { text: "" }];
+            q.correctIndex =
+              typeof q.correctIndex === "number" ? q.correctIndex : 0;
+          }
+
+          // Normalize MATCH
+          if (q.questionType === "match") {
+            // Ensure left/right arrays with same length
+            let left = Array.isArray(q.leftItems) ? q.leftItems : ["", ""];
+            let right = Array.isArray(q.rightItems) ? q.rightItems : ["", ""];
+
+            const minLen = Math.max(2, Math.min(left.length || 0, right.length || 0));
+            left = left.slice(0, minLen);
+            right = right.slice(0, minLen);
+            while (left.length < minLen) left.push("");
+            while (right.length < minLen) right.push("");
+
+            q.leftItems = left;
+            q.rightItems = right;
+
+            // 3–4 options
+            if (!Array.isArray(q.options) || q.options.length < 3) {
+              q.options = [{ text: "" }, { text: "" }, { text: "" }];
+            }
+            if (q.options.length > 4) {
+              q.options = q.options.slice(0, 4);
             }
 
-            // Normalize MCQ
-            if (q.questionType === "mcq") {
-              q.options =
-                Array.isArray(q.options) && q.options.length > 0
-                  ? q.options
-                  : [{ text: "" }, { text: "" }];
-              q.correctIndex =
-                typeof q.correctIndex === "number" ? q.correctIndex : 0;
+            if (
+              typeof q.correctIndex !== "number" ||
+              q.correctIndex < 0 ||
+              q.correctIndex >= q.options.length
+            ) {
+              q.correctIndex = 0;
             }
+          }
 
-            // Normalize MATCH
-            if (q.questionType === "match") {
-              // Ensure left/right arrays with same length
-              let left = Array.isArray(q.leftItems) ? q.leftItems : ["", ""];
-              let right = Array.isArray(q.rightItems) ? q.rightItems : ["", ""];
+          q.marks = typeof q.marks === "number" ? q.marks : 1;
+          q.prompt = q.prompt ?? "";
+          q.sectionId = q.sectionId ?? null;
+          q.imageUrl = q.imageUrl ?? null;
 
-              const minLen = Math.max(2, Math.min(left.length || 0, right.length || 0));
-              left = left.slice(0, minLen);
-              right = right.slice(0, minLen);
-              while (left.length < minLen) left.push("");
-              while (right.length < minLen) right.push("");
-
-              q.leftItems = left;
-              q.rightItems = right;
-
-              // 3–4 options
-              if (!Array.isArray(q.options) || q.options.length < 3) {
-                q.options = [{ text: "" }, { text: "" }, { text: "" }];
-              }
-              if (q.options.length > 4) {
-                q.options = q.options.slice(0, 4);
-              }
-
-              if (
-                typeof q.correctIndex !== "number" ||
-                q.correctIndex < 0 ||
-                q.correctIndex >= q.options.length
-              ) {
-                q.correctIndex = 0;
-              }
-            }
-
-            q.marks = typeof q.marks === "number" ? q.marks : 1;
-            q.prompt = q.prompt ?? "";
-            q.sectionId = q.sectionId ?? null;
-            q.imageUrl = q.imageUrl ?? null;
-
-            return q as Question;
-          })
+          return q as Question;
+        })
         : [];
 
       const safeTest: TestSet = {
@@ -655,7 +651,7 @@ export function ViewTestForm() {
 
       console.log("[saveQuestions] payload:", payload);
 
-      const res = await api.apiPut(`/teacher/tests/${viewingTest._id}`, payload);
+      const res = await api.apiPut(`/admin/testSet/${viewingTest._id}`, payload);
 
       setQuestionsSaving(false);
 
@@ -675,11 +671,11 @@ export function ViewTestForm() {
         prev.map((t) =>
           t._id === viewingTest._id
             ? updatedTest || {
-                ...t,
-                questions: sanitizedQuestions,
-                title: viewingTest.title,
-                description: viewingTest.description,
-              }
+              ...t,
+              questions: sanitizedQuestions,
+              title: viewingTest.title,
+              description: viewingTest.description,
+            }
             : t
         )
       );
@@ -700,7 +696,7 @@ export function ViewTestForm() {
   const handleDeleteTest = async (id: string) => {
     if (!confirm("Delete this test permanently?")) return;
     try {
-      const res = await api.apiDelete(`/teacher/tests/${id}`);
+      const res = await api.apiDelete(`/admin/testSet/${id}`);
       if (!res.ok) {
         console.error("[deleteTest] server error:", res);
         alert(res.error?.message || "Failed to delete test");
@@ -791,27 +787,31 @@ export function ViewTestForm() {
                   <td className="px-6 py-4 text-sm">{test.type}</td>
                   <td className="px-6 py-4 text-sm">
                     {test.assignedBatches &&
-                    test.assignedBatches.length > 0 ? (
+                      test.assignedBatches.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
-                        {test.assignedBatches.map((bid) => {
-                          const b = batches.find((x) => x._id === bid);
+                        {test.assignedBatches.map((batch: any) => {
+                          const batchId = typeof batch === "string" ? batch : batch._id;
+                          const batchName =
+                            typeof batch === "string"
+                              ? batches.find((b) => b._id === batch)?.name || batch
+                              : batch.name;
+
                           return (
                             <span
-                              key={bid}
+                              key={batchId}
                               className="px-2 py-1 rounded bg-secondary text-secondary-foreground text-xs"
                             >
-                              {b ? b.name : bid}
+                              {batchName}
                               <button
                                 className="ml-2 text-xs"
-                                onClick={() =>
-                                  handleRemoveBatchFromTest(test, bid)
-                                }
+                                onClick={() => handleRemoveBatchFromTest(test, batchId)}
                               >
                                 ×
                               </button>
                             </span>
                           );
                         })}
+
                       </div>
                     ) : (
                       <span className="text-sm text-muted-foreground">
@@ -954,8 +954,8 @@ export function ViewTestForm() {
                   <div className="text-sm text-muted-foreground">
                     {viewingTest.createdAt
                       ? new Date(
-                          viewingTest.createdAt
-                        ).toLocaleString()
+                        viewingTest.createdAt
+                      ).toLocaleString()
                       : null}
                   </div>
                 </div>
@@ -1187,7 +1187,7 @@ export function ViewTestForm() {
                     Assigned batches
                   </div>
                   {viewingTest.assignedBatches &&
-                  viewingTest.assignedBatches.length > 0 ? (
+                    viewingTest.assignedBatches.length > 0 ? (
                     <div className="flex gap-2 flex-wrap">
                       {viewingTest.assignedBatches.map((bid) => {
                         const b = batches.find((x) => x._id === bid);

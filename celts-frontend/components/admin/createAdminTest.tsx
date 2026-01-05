@@ -4,9 +4,9 @@ import React, { useState } from "react";
 import api from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-//import { StorageInfo } from "./StorageInfo";
 
 type Option = { text: string };
+
 
 // ---------- MATCH / MCQ QUESTION TYPES ----------
 
@@ -98,7 +98,7 @@ function createDefaultMatch(): MatchQuestion {
 
 const ROMAN = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii"];
 
-export default function TestCreateForm() {
+export function CreateAdminTest() {
   const [type, setType] = useState<"reading" | "listening" | "writing" | "speaking">("reading");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -655,16 +655,14 @@ export default function TestCreateForm() {
             for (let i = 0; i < mq.leftItems.length; i++) {
               if (!mq.leftItems[i].trim()) {
                 setMessage(
-                  `Passage ${bIdx + 1} – Question ${qIdx + 1} (Match) left item ${
-                    i + 1
+                  `Passage ${bIdx + 1} – Question ${qIdx + 1} (Match) left item ${i + 1
                   } is empty.`
                 );
                 return;
               }
               if (!mq.rightItems[i].trim()) {
                 setMessage(
-                  `Passage ${bIdx + 1} – Question ${qIdx + 1} (Match) right item ${
-                    i + 1
+                  `Passage ${bIdx + 1} – Question ${qIdx + 1} (Match) right item ${i + 1
                   } is empty.`
                 );
                 return;
@@ -779,16 +777,14 @@ export default function TestCreateForm() {
             for (let i = 0; i < mq.leftItems.length; i++) {
               if (!mq.leftItems[i].trim()) {
                 setMessage(
-                  `Audio ${bIdx + 1} – Question ${qIdx + 1} (Match) left item ${
-                    i + 1
+                  `Audio ${bIdx + 1} – Question ${qIdx + 1} (Match) left item ${i + 1
                   } is empty.`
                 );
                 return;
               }
               if (!mq.rightItems[i].trim()) {
                 setMessage(
-                  `Audio ${bIdx + 1} – Question ${qIdx + 1} (Match) right item ${
-                    i + 1
+                  `Audio ${bIdx + 1} – Question ${qIdx + 1} (Match) right item ${i + 1
                   } is empty.`
                 );
                 return;
@@ -901,7 +897,7 @@ export default function TestCreateForm() {
     setLoading(true);
 
     try {
-      const res = await api.apiPost("/teacher/tests", payload);
+      const res = await api.apiPost("/admin/testSet", payload);
       setLoading(false);
 
       if (!res.ok) {
@@ -1468,37 +1464,37 @@ export default function TestCreateForm() {
                       {block.questions.map((q, qIdx) =>
                         q.kind === "mcq"
                           ? renderMcqEditor(
-                              q as McqQuestion,
-                              bIdx,
-                              qIdx,
-                              updated =>
-                                updateQuestionInReadingBlock(
-                                  bIdx,
-                                  qIdx,
-                                  updated
-                                ),
-                              () =>
-                                removeQuestionFromReadingBlock(
-                                  bIdx,
-                                  qIdx
-                                )
-                            )
+                            q as McqQuestion,
+                            bIdx,
+                            qIdx,
+                            updated =>
+                              updateQuestionInReadingBlock(
+                                bIdx,
+                                qIdx,
+                                updated
+                              ),
+                            () =>
+                              removeQuestionFromReadingBlock(
+                                bIdx,
+                                qIdx
+                              )
+                          )
                           : renderMatchEditor(
-                              q as MatchQuestion,
-                              bIdx,
-                              qIdx,
-                              updated =>
-                                updateQuestionInReadingBlock(
-                                  bIdx,
-                                  qIdx,
-                                  updated
-                                ),
-                              () =>
-                                removeQuestionFromReadingBlock(
-                                  bIdx,
-                                  qIdx
-                                )
-                            )
+                            q as MatchQuestion,
+                            bIdx,
+                            qIdx,
+                            updated =>
+                              updateQuestionInReadingBlock(
+                                bIdx,
+                                qIdx,
+                                updated
+                              ),
+                            () =>
+                              removeQuestionFromReadingBlock(
+                                bIdx,
+                                qIdx
+                              )
+                          )
                       )}
                     </div>
                   </section>
@@ -1513,7 +1509,7 @@ export default function TestCreateForm() {
                   <h3 className="text-md font-medium text-slate-900">
                     Audios & Questions
                   </h3>
-                <Button type="button" onClick={addListeningBlock}>
+                  <Button type="button" onClick={addListeningBlock}>
                     Add Audio
                   </Button>
                 </div>
@@ -1666,37 +1662,37 @@ export default function TestCreateForm() {
                         {block.questions.map((q, qIdx) =>
                           q.kind === "mcq"
                             ? renderMcqEditor(
-                                q as McqQuestion,
-                                bIdx,
-                                qIdx,
-                                updated =>
-                                  updateQuestionInListeningBlock(
-                                    bIdx,
-                                    qIdx,
-                                    updated
-                                  ),
-                                () =>
-                                  removeQuestionFromListeningBlock(
-                                    bIdx,
-                                    qIdx
-                                  )
-                              )
+                              q as McqQuestion,
+                              bIdx,
+                              qIdx,
+                              updated =>
+                                updateQuestionInListeningBlock(
+                                  bIdx,
+                                  qIdx,
+                                  updated
+                                ),
+                              () =>
+                                removeQuestionFromListeningBlock(
+                                  bIdx,
+                                  qIdx
+                                )
+                            )
                             : renderMatchEditor(
-                                q as MatchQuestion,
-                                bIdx,
-                                qIdx,
-                                updated =>
-                                  updateQuestionInListeningBlock(
-                                    bIdx,
-                                    qIdx,
-                                    updated
-                                  ),
-                                () =>
-                                  removeQuestionFromListeningBlock(
-                                    bIdx,
-                                    qIdx
-                                  )
-                              )
+                              q as MatchQuestion,
+                              bIdx,
+                              qIdx,
+                              updated =>
+                                updateQuestionInListeningBlock(
+                                  bIdx,
+                                  qIdx,
+                                  updated
+                                ),
+                              () =>
+                                removeQuestionFromListeningBlock(
+                                  bIdx,
+                                  qIdx
+                                )
+                            )
                         )}
                       </div>
                     </section>
@@ -1763,12 +1759,13 @@ export default function TestCreateForm() {
                           <label className="text-xs text-slate-700 block mb-2">
                             Prompt
                           </label>
-                          <Input
+                          <textarea
+                            className="w-full p-2 border rounded text-sm resize-y min-h-20"
                             value={q.prompt}
-                            onChange={e =>
+                            onChange={(e) =>
                               updateQuestion(i, {
                                 ...(q as any),
-                                prompt: e.target.value
+                                prompt: e.target.value,
                               })
                             }
                           />

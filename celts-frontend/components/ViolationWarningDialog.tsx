@@ -161,13 +161,13 @@ export function ViolationWarningDialog({
         </div>
 
         <div className="flex gap-3 mt-6">
-          <Button
+          {/* <Button
             onClick={onReturnToExam}
             className="flex-1 bg-green-600 hover:bg-green-700 text-white"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Return to Exam
-          </Button>
+          </Button> */}
 
           <Button
             onClick={onProceedWithViolation}

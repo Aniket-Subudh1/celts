@@ -49,10 +49,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex overflow-x-hidden"> {/* FIX ADDED */}
+    <div className="min-h-screen flex overflow-x-hidden"> 
       
       {/* Left side - image */}
-      <div className="hidden md:flex relative bg-gray-100 md:flex-[3]"> {/* FIX: FLEX RATIO */}
+      <div className="hidden md:flex relative bg-gray-100 md:flex-3"> 
         <Image
           src="/login-bg.jpg"
           alt="Login background"
@@ -68,7 +68,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right side - login */}
-      <div className="flex flex-col w-full md:flex-[2] items-center justify-center bg-white px-8 md:px-10 py-12"> {/* FIXED */}
+      <div className="flex flex-col w-full md:flex-2 items-center justify-center bg-white px-8 md:px-10 py-12"> 
         
         <div className="mb-8 flex flex-col items-center">
           <Image

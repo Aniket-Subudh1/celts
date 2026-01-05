@@ -24,10 +24,16 @@ const SubmissionSchema = new mongoose.Schema({
     required: true,
   },
 
+  //legacy once project is live remove this 
   mediaPath: {
     type: String,
     default: null,
   },
+
+  mediaPaths: {
+      type: Object, 
+      default: {},
+    },
 
   status: {
     type: String,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,10 @@ export function BatchManagement() {
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [selectedFacultyId, setSelectedFacultyId] = useState<string | null>(null);
 
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentAssignSearch, setStudentAssignSearch] = useState("");
+
+
   // ✅ NEW: support selecting MULTIPLE students for bulk assign
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
 
@@ -64,6 +68,69 @@ export function BatchManagement() {
   const [currentDialogBatchId, setCurrentDialogBatchId] = useState<string | null>(null);
   const [studentsDialogLoading, setStudentsDialogLoading] = useState(false);
   const [studentsDialogError, setStudentsDialogError] = useState<string | null>(null);
+
+  // table filters
+  const [filterName, setFilterName] = useState("");
+  const [filterProgram, setFilterProgram] = useState("");
+  const [filterYear, setFilterYear] = useState("");
+  const [filterSection, setFilterSection] = useState("");
+  const [filterFaculty, setFilterFaculty] = useState("");
+
+
+  const filteredStudentOptions = useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+    if (!q) return studentOptions;
+
+    return studentOptions.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.systemId?.toLowerCase().includes(q)
+    );
+  }, [studentSearch, studentOptions]);
+
+  const visibleStudents = filteredStudentOptions.slice(0, 1000);
+
+  const filteredStudents = useMemo(() => {
+    const search = studentSearch.trim().toLowerCase();
+
+    if (!search) return studentListForDialog;
+
+    return studentListForDialog.filter((s) => {
+      const name = s.name?.toLowerCase() || "";
+      const roll = s.systemId?.toLowerCase() || "";
+
+      return (
+        name.includes(search) ||
+        roll.includes(search)
+      );
+    });
+  }, [studentSearch, studentListForDialog]);
+
+
+  const assignSearchResults = useMemo(() => {
+    const q = studentAssignSearch.trim().toLowerCase();
+    if (!q) return [];
+
+    return studentOptions
+      .filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.systemId?.toLowerCase().includes(q)
+      )
+      .slice(0, 20); // limit results for UX
+  }, [studentAssignSearch, studentOptions]);
+
+  const handleSelectAllVisible = () => {
+    setSelectedStudentIds((prev) => {
+      const set = new Set(prev);
+      visibleStudents.forEach((s) => set.add(s.id));
+      return Array.from(set);
+    });
+  };
+
+  const handleClearAll = () => {
+    setSelectedStudentIds([]);
+  };
 
   useEffect(() => {
     fetchAll();
@@ -100,7 +167,7 @@ export function BatchManagement() {
         systemId: u.systemId,
       }));
       setFacultyOptions(opts);
-    } catch {}
+    } catch { }
   }
 
   async function fetchStudentOptions() {
@@ -113,7 +180,7 @@ export function BatchManagement() {
         systemId: u.systemId,
       }));
       setStudentOptions(opts);
-    } catch {}
+    } catch { }
   }
 
   // Create batch
@@ -316,6 +383,49 @@ export function BatchManagement() {
     }
   };
 
+
+  const filteredBatches = useMemo(() => {
+    return batches.filter((b) => {
+      const nameMatch = b.name
+        ?.toLowerCase()
+        .includes(filterName.toLowerCase());
+
+      const programMatch = (b.program || "")
+        .toLowerCase()
+        .includes(filterProgram.toLowerCase());
+
+      const yearMatch = filterYear
+        ? String(b.year || "").includes(filterYear)
+        : true;
+
+      const sectionMatch = (b.section || "")
+        .toLowerCase()
+        .includes(filterSection.toLowerCase());
+
+      const facultyMatch = (b.faculty || [])
+        .join(" ")
+        .toLowerCase()
+        .includes(filterFaculty.toLowerCase());
+
+      return (
+        nameMatch &&
+        programMatch &&
+        yearMatch &&
+        sectionMatch &&
+        facultyMatch
+      );
+    });
+  }, [
+    batches,
+    filterName,
+    filterProgram,
+    filterYear,
+    filterSection,
+    filterFaculty,
+  ]);
+
+
+
   return (
     <div className="space-y-4">
       {/* HEADER */}
@@ -416,7 +526,7 @@ export function BatchManagement() {
         </div>
 
         {/* Students (BULK) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
           <div>
             <label className="text-sm block mb-1">Select Batch</label>
             <select
@@ -434,43 +544,147 @@ export function BatchManagement() {
           </div>
 
           <div>
-            <label className="text-sm block mb-1">
-              Select Students (Ctrl/Cmd + click for multi-select)
-            </label>
-            <select
-              multiple
-              className="w-full px-3 py-2 border rounded h-40"
-              value={selectedStudentIds}
-              onChange={(e) => {
-                const values = Array.from(e.target.selectedOptions).map(
-                  (opt) => opt.value
-                );
-                setSelectedStudentIds(values);
-              }}
-            >
-              {studentOptions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.systemId} - {s.name}
-                </option>
-              ))}
-            </select>
+            <label className="text-sm block mb-1">Search Students</label>
+            <Input
+              placeholder="Search by name or roll number"
+              value={studentSearch}
+              onChange={(e) => setStudentSearch(e.target.value)}
+            />
+
+            {/* Select controls */}
+            <div className="flex gap-2 mt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  const filtered = studentOptions
+                    .filter((s) => {
+                      const q = studentSearch.toLowerCase();
+                      if (!q) return true;
+                      return (
+                        s.name.toLowerCase().includes(q) ||
+                        s.systemId?.toLowerCase().includes(q)
+                      );
+                    })
+                    .slice(0, 10000)
+                    .map((s) => s.id);
+
+                  setSelectedStudentIds((prev) => {
+                    const set = new Set(prev);
+                    filtered.forEach((id) => set.add(id));
+                    return Array.from(set);
+                  });
+                }}
+              >
+                Select All (Filtered)
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                type="button"
+                onClick={() => setSelectedStudentIds([])}
+                disabled={selectedStudentIds.length === 0}
+              >
+                Clear All
+              </Button>
+            </div>
+
+            {/* Checkbox list */}
+            <div className="border rounded mt-2 max-h-48 overflow-y-auto">
+              {studentOptions
+                .filter((s) => {
+                  const q = studentSearch.toLowerCase();
+                  if (!q) return true;
+                  return (
+                    s.name.toLowerCase().includes(q) ||
+                    s.systemId?.toLowerCase().includes(q)
+                  );
+                })
+                .slice(0, 1000)
+                .map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 px-3 py-2 border-b last:border-b-0 text-sm cursor-pointer hover:bg-gray-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedStudentIds.includes(s.id)}
+                      onChange={(e) => {
+                        setSelectedStudentIds((prev) =>
+                          e.target.checked
+                            ? [...prev, s.id]
+                            : prev.filter((id) => id !== s.id)
+                        );
+                      }}
+                    />
+                    <span>
+                      {s.systemId} – {s.name}
+                    </span>
+                  </label>
+                ))}
+            </div>
           </div>
 
-          <Button
-            onClick={handleAssignStudentsBulk}
-            disabled={assignLoading || !selectedBatchId || selectedStudentIds.length === 0}
-          >
-            Assign Students (Bulk)
-          </Button>
+          {/* Assign button */}
+          <div className="flex flex-col justify-end">
+            <div className="text-sm mb-2">
+              Selected: <strong>{selectedStudentIds.length}</strong>
+            </div>
+
+            <Button
+              onClick={handleAssignStudentsBulk}
+              disabled={
+                assignLoading ||
+                !selectedBatchId ||
+                selectedStudentIds.length === 0
+              }
+            >
+              Assign Students
+            </Button>
+          </div>
         </div>
+
 
         {assignMessage && (
           <div className="text-sm text-green-700">{assignMessage}</div>
         )}
       </Card>
 
+      <Card className="p-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+          <Input
+            placeholder="Filter Name"
+            value={filterName}
+            onChange={(e) => setFilterName(e.target.value)}
+          />
+          <Input
+            placeholder="Filter Program"
+            value={filterProgram}
+            onChange={(e) => setFilterProgram(e.target.value)}
+          />
+          <Input
+            placeholder="Filter Year"
+            value={filterYear}
+            onChange={(e) => setFilterYear(e.target.value)}
+          />
+          <Input
+            placeholder="Filter Section"
+            value={filterSection}
+            onChange={(e) => setFilterSection(e.target.value)}
+          />
+          <Input
+            placeholder="Filter Faculty"
+            value={filterFaculty}
+            onChange={(e) => setFilterFaculty(e.target.value)}
+          />
+        </div>
+      </Card>
+
+
       {/* TABLE FOR EXISTING BATCHES */}
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto max-h-[420px] overflow-y-auto">
         <table className="w-full border-collapse">
           <thead className="bg-gray-100 border-b">
             <tr>
@@ -497,7 +711,7 @@ export function BatchManagement() {
                 </td>
               </tr>
             ) : (
-              batches.map((b) => (
+              filteredBatches.map((b) => (
                 <tr
                   key={b._id}
                   className="border-b hover:bg-gray-50 transition-colors"
@@ -553,16 +767,23 @@ export function BatchManagement() {
             <DialogTitle>Batch Students</DialogTitle>
           </DialogHeader>
 
-          <div className="py-2">
+
+          <div className="py-2 space-y-3">
+            <Input
+              placeholder="Search by name or roll number"
+              value={studentSearch}
+              onChange={(e) => setStudentSearch(e.target.value)}
+            />
+
             {studentsDialogLoading ? (
               <div className="text-sm">Loading students...</div>
             ) : studentsDialogError ? (
               <div className="text-sm text-red-600">{studentsDialogError}</div>
-            ) : studentListForDialog.length === 0 ? (
-              <div className="text-sm">No students in this batch.</div>
+            ) : filteredStudents.length === 0 ? (
+              <div className="text-sm">No matching students found.</div>
             ) : (
-              <div className="space-y-2">
-                {studentListForDialog.map((s) => (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
+                {filteredStudents.map((s) => (
                   <div
                     key={s.id ?? s.name}
                     className="flex items-center justify-between border rounded p-2"
@@ -573,28 +794,28 @@ export function BatchManagement() {
                         {s.systemId || "—"}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          if (!s.id) {
-                            alert(
-                              "This student record does not contain an id; cannot remove from batch."
-                            );
-                            return;
-                          }
-                          handleUnassignStudent(s.id);
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    </div>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (!s.id) {
+                          alert(
+                            "This student record does not contain an id; cannot remove from batch."
+                          );
+                          return;
+                        }
+                        handleUnassignStudent(s.id);
+                      }}
+                    >
+                      Remove
+                    </Button>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsStudentDialogOpen(false)}>

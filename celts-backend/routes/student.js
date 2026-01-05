@@ -102,12 +102,12 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
     testAttempts.forEach(attempt => {
       const testId = String(attempt.testSet);
       const existing = attemptMap.get(testId);
-      
+
       // Keep the latest attempt or the completed one
-      if (!existing || 
-          attempt.status === 'completed' || 
-          (attempt.status !== 'started' && existing.status === 'started') ||
-          attempt.createdAt > existing.createdAt) {
+      if (!existing ||
+        attempt.status === 'completed' ||
+        (attempt.status !== 'started' && existing.status === 'started') ||
+        attempt.createdAt > existing.createdAt) {
         attemptMap.set(testId, {
           status: attempt.status,
           attemptNumber: attempt.attemptNumber,
@@ -123,7 +123,7 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
     submissions.forEach(submission => {
       const testId = String(submission.testSet);
       const existing = submissionMap.get(testId);
-      
+
       // Collect all submissions for the test
       if (!existing) {
         submissionMap.set(testId, {
@@ -144,12 +144,12 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
     const normalizedTests = tests.map((t) => {
       const now = new Date();
       let status = 'upcoming';
-      
+
       // Determine status based on startTime and endTime
       if (t.startTime) {
         const startTime = new Date(t.startTime);
         const endTime = t.endTime ? new Date(t.endTime) : null;
-        
+
         if (endTime && now > endTime) {
           status = 'completed';
         } else if (now >= startTime) {
@@ -165,11 +165,11 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
       const submissionInfo = submissionMap.get(testId);
       let attemptStatus = null;
       let evaluationStatus = null;
-      
+
       if (attempt) {
         if (attempt.status === 'completed' || attempt.status === 'violation_exit' || attempt.status === 'abandoned') {
           attemptStatus = 'attempted';
-          
+
           // Check evaluation status for completed attempts
           if (submissionInfo && submissionInfo.hasSubmissions) {
             if (submissionInfo.anyPending) {
@@ -180,7 +180,7 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
               evaluationStatus = 'evaluation_failed';
             }
           }
-          
+
           // Override test status if completed
           if (attempt.status === 'completed') {
             status = 'completed';
@@ -189,7 +189,7 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
           attemptStatus = 'in-progress';
         }
       }
-      
+
       return {
         _id: t._id,
         title: t.title,
@@ -223,37 +223,127 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
 
 // POST /api/student/submit/:testId/speaking 
 // Accepts multipart/form-data with field "media" for audio/video
-// ---------- POST /api/student/submit/:testId/speaking ----------
+// router.post( '/submit/:testId/speaking', protect, restrictTo(['student']), uploadStudentMedia.array('media')('media'), async (req, res) => {
+//     const { testId } = req.params;
+//     const skill = 'speaking';
+
+//     try {
+//       if (!mongoose.Types.ObjectId.isValid(testId)) {
+//         return res.status(400).json({ message: 'Invalid testId' });
+//       }
+
+//       const testSet = await TestSet.findById(testId);
+//       if (!testSet) {
+//         return res.status(404).json({ message: 'Test not found' });
+//       }
+
+//       const allowed = await canStudentStart(testSet, req.user);
+//       if (!allowed) {
+//         return res
+//           .status(403)
+//           .json({ message: 'Not allowed to start/submit this test now (timing rules)' });
+//       }
+
+//       // response & evaluationPayload come as JSON strings in multipart
+//       let responseObj = {};
+//       let evaluationPayload = null;
+
+//       if (req.body.response) {
+//         try {
+//           responseObj = JSON.parse(req.body.response);
+//         } catch {
+//           responseObj = {};
+//         }
+//       }
+
+//       if (req.body.evaluationPayload) {
+//         try {
+//           evaluationPayload = JSON.parse(req.body.evaluationPayload);
+//         } catch {
+//           evaluationPayload = null;
+//         }
+//       }
+
+//       // Count speaking questions & attempts
+//       const speakingQuestions = (testSet.questions || []).filter(
+//         (q) => q.questionType === 'speaking'
+//       );
+
+//       const totalQuestions = speakingQuestions.length;
+
+//       // Simplest logic: if we received a media file, treat it as "attempted"
+//       const attemptedCount = req.file && totalQuestions > 0 ? totalQuestions : 0;
+//       const unattemptedCount = Math.max(totalQuestions - attemptedCount, 0);
+
+//       const submissionPayload = {
+//         student: req.user._id,
+//         testSet: testSet._id,
+//         skill,
+//         response: responseObj,
+//         status: 'pending', // will be graded by worker
+//         totalMarks: 0,
+//         maxMarks: 0,
+//         correctCount: 0,
+//         incorrectCount: 0,
+//         totalQuestions,
+//         attemptedCount,
+//         unattemptedCount,
+//         bandScore: null,
+//         mediaPath: req.file ? req.file.path : null,
+//       };
+
+//       const submission = await Submission.create(submissionPayload);
+
+//       const jobData = {
+//         submissionId: submission._id.toString(),
+//         studentId: req.user._id.toString(),
+//         testId: testSet._id.toString(),
+//         skill,
+//         response: responseObj,
+//         mediaPath: req.file ? req.file.path : null,
+//         evaluationPayload,
+//       };
+
+//       const job = await submissionQueue.add(jobData);
+//       const jobId = job.id || null;
+
+//       return res.status(202).json({
+//         message: 'Speaking submission accepted for grading',
+//         submissionId: submission._id,
+//         jobId,
+//         summary: null,
+//       });
+//     } catch (err) {
+//       console.error('[POST /student/submit/:testId/speaking] error:', err);
+//       return res.status(500).json({ message: err.message || 'Server error' });
+//     }
+//   }
+// );
+
+
+// POST /api/student/submit/:testId/speaking
+// Accepts multipart/form-data with MULTIPLE "media" files (one per speaking question)
+
 router.post(
-  '/submit/:testId/speaking',
+  "/submit/:testId/speaking",
   protect,
-  restrictTo(['student']),
-  uploadStudentMedia.single('media'),
+  restrictTo(["student"]),
+  uploadStudentMedia.any(), 
   async (req, res) => {
     const { testId } = req.params;
-    const skill = 'speaking';
+    const skill = "speaking";
 
     try {
       if (!mongoose.Types.ObjectId.isValid(testId)) {
-        return res.status(400).json({ message: 'Invalid testId' });
+        return res.status(400).json({ message: "Invalid testId" });
       }
 
       const testSet = await TestSet.findById(testId);
       if (!testSet) {
-        return res.status(404).json({ message: 'Test not found' });
+        return res.status(404).json({ message: "Test not found" });
       }
 
-      const allowed = await canStudentStart(testSet, req.user);
-      if (!allowed) {
-        return res
-          .status(403)
-          .json({ message: 'Not allowed to start/submit this test now (timing rules)' });
-      }
-
-      // response & evaluationPayload come as JSON strings in multipart
       let responseObj = {};
-      let evaluationPayload = null;
-
       if (req.body.response) {
         try {
           responseObj = JSON.parse(req.body.response);
@@ -262,89 +352,71 @@ router.post(
         }
       }
 
-      if (req.body.evaluationPayload) {
-        try {
-          evaluationPayload = JSON.parse(req.body.evaluationPayload);
-        } catch {
-          evaluationPayload = null;
-        }
+      // ✅ Collect media paths PER QUESTION
+      const mediaPaths = {};
+      for (const file of req.files || []) {
+        // file.fieldname = media_<questionKey>
+        const key = file.fieldname.replace("media_", "");
+        mediaPaths[key] = file.path;
       }
 
-      // ✅ Count speaking questions & attempts
-      const speakingQuestions = (testSet.questions || []).filter(
-        (q) => q.questionType === 'speaking'
-      );
-
-      const totalQuestions = speakingQuestions.length;
-
-      // Simplest logic: if we received a media file, treat it as "attempted"
-      const attemptedCount = req.file && totalQuestions > 0 ? totalQuestions : 0;
-      const unattemptedCount = Math.max(totalQuestions - attemptedCount, 0);
-
-      const submissionPayload = {
+      const submission = await Submission.create({
         student: req.user._id,
         testSet: testSet._id,
         skill,
         response: responseObj,
-        status: 'pending', // will be graded by worker
-        totalMarks: 0,
-        maxMarks: 0,
-        correctCount: 0,
-        incorrectCount: 0,
-        totalQuestions,
-        attemptedCount,
-        unattemptedCount,
-        bandScore: null,
-        mediaPath: req.file ? req.file.path : null,
-      };
+        status: "pending",
+        totalQuestions: testSet.questions.filter(q => q.questionType === "speaking").length,
+        attemptedCount: Object.keys(mediaPaths).length,
+        unattemptedCount:
+          testSet.questions.filter(q => q.questionType === "speaking").length -
+          Object.keys(mediaPaths).length,
+        mediaPath: null, // not used anymore
+        geminiEvaluation: null,
+      });
 
-      const submission = await Submission.create(submissionPayload);
-
-      const jobData = {
+      await submissionQueue.add({
         submissionId: submission._id.toString(),
         studentId: req.user._id.toString(),
         testId: testSet._id.toString(),
         skill,
         response: responseObj,
-        mediaPath: req.file ? req.file.path : null,
-        evaluationPayload,
-      };
-
-      const job = await submissionQueue.add(jobData);
-      const jobId = job.id || null;
+        mediaPaths, // PASS PER-QUESTION MEDIA
+      });
 
       return res.status(202).json({
-        message: 'Speaking submission accepted for grading',
+        message: "Speaking submission accepted for grading",
         submissionId: submission._id,
-        jobId,
-        summary: null,
       });
     } catch (err) {
-      console.error('[POST /student/submit/:testId/speaking] error:', err);
-      return res.status(500).json({ message: err.message || 'Server error' });
+      console.error("Speaking submit error:", err);
+      return res.status(500).json({ message: err.message });
     }
   }
 );
+
+
+
 
 
 // Helper: can student start test?
 async function canStudentStart(testSet, student) {
   // If no startTime, test is always available
   if (!testSet.startTime) return true;
-  
+
   const now = new Date();
   const startTime = new Date(testSet.startTime);
-  
+
   // Allow access 10 minutes before scheduled time
   const tenMinBefore = new Date(startTime.getTime() - 10 * 60 * 1000);
   if (now < tenMinBefore) return false;
-  
+
   // Check if test has ended
   if (testSet.endTime) {
     const endTime = new Date(testSet.endTime);
     if (now > endTime) return false;
   }
-  
+
   return true;
 }
 
@@ -356,7 +428,7 @@ router.get('/tests/:id', protect, restrictTo(['student']), async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ message: 'Invalid test id' });
   }
-  
+
   try {
     const test = await TestSet.findById(id).lean();
     if (!test) return res.status(404).json({ message: 'Test not found' });
@@ -425,7 +497,7 @@ router.post('/tests/:id/start', protect, restrictTo(['student']), async (req, re
     // Use findOneAndUpdate with upsert for atomic operation
     let newAttempt;
     let attemptNumber = 1;
-    
+
     // First check if there's already an ongoing attempt
     const ongoingAttempt = await TestAttempt.findOne({
       student: req.user._id,
@@ -439,17 +511,17 @@ router.post('/tests/:id/start', protect, restrictTo(['student']), async (req, re
       const testSet = await TestSet.findById(id);
       const timeElapsed = Math.floor((new Date() - ongoingAttempt.startTime) / 1000);
       const timeLimit = testSet?.timeLimit * 60 || 3600; // Default 1 hour if not specified
-      
+
       if (timeElapsed >= timeLimit) {
         // Auto-submit the expired attempt
         ongoingAttempt.status = 'completed';
         ongoingAttempt.endTime = new Date();
         await ongoingAttempt.save();
-        
+
         console.log(`Auto-submitted expired attempt ${ongoingAttempt._id}`);
       } else {
         // Return existing attempt data so frontend can resume
-        return res.status(200).json({ 
+        return res.status(200).json({
           message: 'Test attempt resumed',
           data: {
             attemptId: ongoingAttempt._id,
@@ -485,7 +557,7 @@ router.post('/tests/:id/start', protect, restrictTo(['student']), async (req, re
 
       // Check post-exam security lockdown
       if (examSecurity?.postExamSecurity?.reattemptBlocked) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: 'This exam has been secured and locked. No further attempts are allowed.',
           code: 'EXAM_LOCKED',
           lockTimestamp: examSecurity.postExamSecurity.lockTimestamp
@@ -494,7 +566,7 @@ router.post('/tests/:id/start', protect, restrictTo(['student']), async (req, re
 
       // Legacy check for retry permission
       if (!completedAttempt.isRetryAllowed) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: 'You have already attempted this test. Contact admin for retry permission.',
           code: 'RETRY_NOT_ALLOWED'
         });
@@ -529,14 +601,14 @@ router.post('/tests/:id/start', protect, restrictTo(['student']), async (req, re
 
   } catch (err) {
     console.error('[POST /student/tests/:id/start] error:', err);
-    
+
     // Handle duplicate key error (race condition)
     if (err.code === 11000) {
-      return res.status(400).json({ 
-        message: 'Test attempt already in progress. Please refresh and try again.' 
+      return res.status(400).json({
+        message: 'Test attempt already in progress. Please refresh and try again.'
       });
     }
-    
+
     return res.status(500).json({ message: 'Server error' });
   }
 });
@@ -564,7 +636,7 @@ router.get('/tests/:id/attempts', protect, restrictTo(['student']), async (req, 
     }
 
     // Check for completed attempt and exam security lockdown
-    const completedAttempt = attempts.find(a => 
+    const completedAttempt = attempts.find(a =>
       a.status === 'completed' || a.status === 'abandoned' || a.status === 'violation_exit'
     );
 
@@ -635,7 +707,7 @@ router.post('/tests/:id/end', protect, restrictTo(['student']), async (req, res)
     const statusMap = {
       'completed': 'completed',
       'fullscreen_exit': 'violation_exit',
-      'tab_switch': 'violation_exit', 
+      'tab_switch': 'violation_exit',
       'time_expired': 'completed',
       'violation': 'violation_exit',
       'manual_exit': 'abandoned'
@@ -644,7 +716,7 @@ router.post('/tests/:id/end', protect, restrictTo(['student']), async (req, res)
     attempt.status = statusMap[reason] || 'abandoned';
     attempt.exitReason = reason;
     attempt.completedAt = new Date();
-    
+
     // Add violations to the attempt record if provided
     if (violations && Array.isArray(violations) && violations.length > 0) {
       attempt.violations = violations.map(v => ({
@@ -653,7 +725,7 @@ router.post('/tests/:id/end', protect, restrictTo(['student']), async (req, res)
         details: v.details || ''
       }));
     }
-    
+
     if (submissionId && mongoose.Types.ObjectId.isValid(submissionId)) {
       attempt.submissionId = submissionId;
     }
@@ -705,199 +777,298 @@ router.post('/tests/:id/violation', protect, restrictTo(['student']), async (req
 // Auto-grades reading/listening MCQs, stores summary and band score.
 // Writing/speaking stay 'pending' for async/manual grading.
 router.post('/submit/:testId/:skill', protect, restrictTo(['student']), [body('response').notEmpty()], async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty())
-    return res.status(400).json({ errors: errors.array() });
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
 
-  const { testId, skill } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(testId))
+    const { testId, skill } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(testId))
     return res.status(400).json({ message: 'Invalid testId' });
 
-  try {
-    const testSet = await TestSet.findById(testId);
+    try {
+      const testSet = await TestSet.findById(testId);
     if (!testSet) return res.status(404).json({ message: 'Test not found' });
 
-    const allowed = await canStudentStart(testSet, req.user);
-    if (!allowed)
+      const allowed = await canStudentStart(testSet, req.user);
+      if (!allowed)
       return res
         .status(403)
         .json({ message: 'Not allowed to start/submit this test now (timing rules)' });
 
-    const response = req.body.response;
+      const response = req.body.response;
     const autoGradable = skill === 'reading' || skill === 'listening';
 
-    let earnedMarks = 0;
-    let maxMarks = 0;
-    let correctCount = 0;
-    let incorrectCount = 0;
-    let totalQuestions = 0;
-    let attemptedCount = 0;
-    let unattemptedCount = 0;
-    let bandScore = null;
+      let earnedMarks = 0;
+      let maxMarks = 0;
+      let correctCount = 0;
+      let incorrectCount = 0;
+      let totalQuestions = 0;
+      let attemptedCount = 0;
+      let unattemptedCount = 0;
+      let bandScore = null;
 
-    // Auto grading for reading/listening (MCQ only)
-    if (autoGradable) {
-      const isArrayResp = Array.isArray(response);
+      // Auto grading for reading/listening (MCQ + MATCH)
+      if (autoGradable) {
+        const isArrayResp = Array.isArray(response);
 
-      testSet.questions.forEach((q, idx) => {
-        if (q.questionType !== 'mcq') return;
+        testSet.questions.forEach((q, idx) => {
+          if (q.questionType !== "mcq" && q.questionType !== "match") return;
 
-        totalQuestions += 1;
+          totalQuestions += 1;
 
-        const qMarks = q.marks || 1;
-        maxMarks += qMarks;
+          const qMarks = q.marks || 1;
+          maxMarks += qMarks;
 
-        let studentAnswerIndex = null;
+          let studentAnswerIndex = null;
 
-        if (isArrayResp) {
-          const entry = response.find(
-            (r) =>
-              r.questionIndex === idx ||
-              String(r.questionId) === String(q._id)
-          );
+          if (isArrayResp) {
+            const entry = response.find(
+              (r) =>
+                r.questionIndex === idx ||
+                String(r.questionId) === String(q._id)
+            );
           if (entry && typeof entry.answer === 'number') {
-            studentAnswerIndex = entry.answer;
-          }
+              studentAnswerIndex = entry.answer;
+            }
         } else if (response && typeof response === 'object') {
-          const keyByIndex = String(idx);
-          const keyById = q._id ? String(q._id) : null;
+            const keyByIndex = String(idx);
+            const keyById = q._id ? String(q._id) : null;
 
-          if (
-            keyById &&
-            response[keyById] &&
+            if (
+              keyById &&
+              response[keyById] &&
             typeof response[keyById].selectedIndex === 'number'
-          ) {
-            studentAnswerIndex = response[keyById].selectedIndex;
-          } else if (
-            response[keyByIndex] &&
+            ) {
+              studentAnswerIndex = response[keyById].selectedIndex;
+            } else if (
+              response[keyByIndex] &&
             typeof response[keyByIndex].selectedIndex === 'number'
-          ) {
-            studentAnswerIndex = response[keyByIndex].selectedIndex;
+            ) {
+              studentAnswerIndex = response[keyByIndex].selectedIndex;
+            }
           }
-        }
 
         if (typeof studentAnswerIndex === 'number') {
-          attemptedCount += 1;
+            attemptedCount += 1;
 
-          if (studentAnswerIndex === q.correctIndex) {
-            correctCount += 1;
-            earnedMarks += qMarks;
+            if (studentAnswerIndex === q.correctIndex) {
+              correctCount += 1;
+              earnedMarks += qMarks;
+            } else {
+              incorrectCount += 1;
+            }
           } else {
-            incorrectCount += 1;
+            unattemptedCount += 1;
           }
-        } else {
-          unattemptedCount += 1;
-        }
-      });
-      bandScore = computeBandScore(earnedMarks, maxMarks || 0);
-    }
+        });
 
-    // Basic counts for writing/speaking (no auto grading here)
-    if (!autoGradable && (skill === 'writing' || skill === 'speaking')) {
-      const skillQuestions = (testSet.questions || []).filter(
-        (q) => q.questionType === (skill === 'writing' ? 'writing' : 'speaking')
-      );
+        bandScore = computeBandScore(earnedMarks, maxMarks || 0);
+      }
 
-      totalQuestions = skillQuestions.length;
-      attemptedCount = skillQuestions.reduce((count, q, idx) => {
-        const keyById = q._id ? String(q._id) : null;
-        const keyByIndex = String(idx);
-
-        const ans =
-          (keyById && response[keyById]) ||
-          response[keyByIndex] ||
-          null;
-
-        if (skill === 'writing') {
-          if (ans && typeof ans.text === 'string' && ans.text.trim().length > 0) {
-            return count + 1;
+      // Basic counts for writing/speaking (no auto grading here)
+  
+      if (!autoGradable && (skill === "writing" || skill === "speaking")) {
+        // Collect all writing/speaking questions *with their original index*
+        const skillQuestionsWithIndex = [];
+        (testSet.questions || []).forEach((q, idx) => {
+          if (
+            (skill === "writing" && q.questionType === "writing") ||
+            (skill === "speaking" && q.questionType === "speaking")
+          ) {
+            skillQuestionsWithIndex.push({ q, idx });
           }
-        }
+        });
 
-        if (skill === 'speaking') {
-          if (ans && typeof ans.uploadedUrl === 'string' && ans.uploadedUrl.trim().length > 0) {
-            return count + 1;
+        totalQuestions = skillQuestionsWithIndex.length;
+
+        attemptedCount = skillQuestionsWithIndex.reduce((count, item) => {
+          const { q, idx } = item;
+          const keyById = q._id ? String(q._id) : null;
+          const keyByIndex = String(idx); // <-- global index in testSet.questions
+
+          const ans =
+            (keyById && response && response[keyById]) ||
+            (response && response[keyByIndex]) ||
+            null;
+
+          if (skill === "writing") {
+            if (
+              ans &&
+              typeof ans.text === "string" &&
+              ans.text.trim().length > 0
+            ) {
+              return count + 1;
+            }
           }
-        }
-        return count;
-      }, 0);
 
-      unattemptedCount = Math.max(totalQuestions - attemptedCount, 0);
-    }
+          if (skill === "speaking") {
+            // For speaking, we treat as attempted if an uploadedUrl is present and non-empty.
+            if (
+              ans &&
+              typeof ans.uploadedUrl === "string" &&
+              ans.uploadedUrl.trim().length > 0
+            ) {
+              return count + 1;
+            }
+          }
+
+          return count;
+        }, 0);
+
+        unattemptedCount = Math.max(totalQuestions - attemptedCount, 0);
+      }
 
 
-    // Build submission payload
-    const submissionPayload = {
-      student: req.user._id,
-      testSet: testSet._id,
-      skill,
-      response,
-      status: autoGradable ? 'graded' : 'pending',
-
-      totalMarks: earnedMarks || 0,
-      maxMarks: maxMarks || 0,
-      correctCount,
-      incorrectCount,
-      totalQuestions,
-      attemptedCount,
-      unattemptedCount,
-      bandScore: bandScore != null ? bandScore : null,
-    };
-
-    const submission = await Submission.create(submissionPayload);
-
-    // Queue job only for non-auto-gradable skills (writing/speaking)
-    let jobId = null;
-    if (!autoGradable) {
-      const jobData = {
-        submissionId: submission._id.toString(),
-        studentId: req.user._id.toString(),
-        testId: testSet._id.toString(),
+      // Build submission payload
+      const submissionPayload = {
+        student: req.user._id,
+        testSet: testSet._id,
         skill,
         response,
+        status: autoGradable ? 'graded' : 'pending',
+
+        totalMarks: earnedMarks || 0,
+        maxMarks: maxMarks || 0,
+        correctCount,
+        incorrectCount,
+        totalQuestions,
+        attemptedCount,
+        unattemptedCount,
+        bandScore: bandScore != null ? bandScore : null,
       };
-      const job = await submissionQueue.add(jobData);
-      jobId = job.id || null;
-    }
+
+      const submission = await Submission.create(submissionPayload);
+
+      // Queue job only for non-auto-gradable skills (writing/speaking)
+      let jobId = null;
+      if (!autoGradable) {
+        const jobData = {
+          submissionId: submission._id.toString(),
+          studentId: req.user._id.toString(),
+          testId: testSet._id.toString(),
+          skill,
+          response,
+        };
+        const job = await submissionQueue.add(jobData);
+        jobId = job.id || null;
+      }
 
     // Update StudentStats (only when we have a bandScore)
-    if (bandScore != null) {
-      await updateStudentStatsForSkill({
-        student: req.user,
-        skill,
-        bandScore,
-      });
-    }
-
-    const summary = autoGradable
-      ? {
-        submissionId: submission._id,
-        testId: testSet._id,
-        skill,
-        totalMarks: submission.totalMarks,
-        maxMarks: submission.maxMarks,
-        totalQuestions: submission.totalQuestions,
-        attemptedCount: submission.attemptedCount,
-        unattemptedCount: submission.unattemptedCount,
-        correctCount: submission.correctCount,
-        incorrectCount: submission.incorrectCount,
-        bandScore: submission.bandScore,
+      if (bandScore != null) {
+        await updateStudentStatsForSkill({
+          student: req.user,
+          skill,
+          bandScore,
+        });
       }
-      : null;
 
-    return res.status(autoGradable ? 200 : 202).json({
-      message: autoGradable
+      const summary = autoGradable
+        ? {
+            submissionId: submission._id,
+            testId: testSet._id,
+            skill,
+            totalMarks: submission.totalMarks,
+            maxMarks: submission.maxMarks,
+            totalQuestions: submission.totalQuestions,
+            attemptedCount: submission.attemptedCount,
+            unattemptedCount: submission.unattemptedCount,
+            correctCount: submission.correctCount,
+            incorrectCount: submission.incorrectCount,
+            bandScore: submission.bandScore,
+          }
+        : null;
+
+      return res.status(autoGradable ? 200 : 202).json({
+        message: autoGradable
         ? 'Submission accepted and auto-graded'
         : 'Submission accepted for grading',
-      submissionId: submission._id,
-      jobId,
-      summary,
-    });
-  } catch (err) {
-    console.error('[POST /student/submit] error:', err);
-    return res.status(500).json({ message: err.message || 'Server error' });
+        submissionId: submission._id,
+        jobId,
+        summary,
+      });
+    } catch (err) {
+      console.error("[POST /student/submit] error:", err);
+      return res.status(500).json({ message: err.message || "Server error" });
+    }
   }
-}
+);
+
+
+// GET /api/student/submissions/summary
+// Returns latest submission per skill (reading/listening/writing/speaking)
+router.get( '/submissions/summary', protect, restrictTo(['student']), async (req, res) => {
+    try {
+      const studentId = req.user._id;
+
+      // Optional: load StudentStats (not strictly required here, but "uses both tables"
+      // if you ever want to cross-check bands).
+      const statsDoc = await StudentStats.findOne({ student: studentId }).lean();
+
+      // Fetch *all* submissions for this student, newest first
+      const subs = await Submission.find({ student: studentId })
+        .populate('testSet', 'title type')
+        .sort({ createdAt: -1 })
+        .lean();
+
+      // Pick the latest submission per skill
+      const latestBySkill = {
+        reading: null,
+        listening: null,
+        writing: null,
+        speaking: null,
+      };
+
+      for (const sub of subs) {
+        const skill = sub.skill; // 'reading' | 'listening' | 'writing' | 'speaking'
+        if (!latestBySkill[skill]) {
+          latestBySkill[skill] = sub;
+        }
+      }
+
+      // Shape the response per skill
+      const buildSummary = (skillKey) => {
+        const sub = latestBySkill[skillKey];
+        if (!sub) return null;
+
+        return {
+          skill: skillKey,
+          submissionId: sub._id,
+          testId: sub.testSet?._id || null,
+          testTitle: sub.testSet?.title || null,
+          status: sub.status,
+
+          totalMarks: sub.totalMarks || 0,
+          maxMarks: sub.maxMarks || 0,
+
+          totalQuestions: sub.totalQuestions || 0,
+          attemptedCount: sub.attemptedCount || 0,
+          unattemptedCount: sub.unattemptedCount || 0,
+
+          correctCount: sub.correctCount || 0,
+          incorrectCount: sub.incorrectCount || 0,
+
+          bandScore:
+            typeof sub.bandScore === 'number' ? sub.bandScore : null,
+
+          createdAt: sub.createdAt || null,
+        };
+      };
+
+      const summary = {
+        reading: buildSummary('reading'),
+        listening: buildSummary('listening'),
+        writing: buildSummary('writing'),
+        speaking: buildSummary('speaking'),
+      };
+
+      return res.json(summary);
+    } catch (err) {
+      console.error('[GET /student/submissions/summary] error:', err);
+      return res.status(500).json({
+        message: 'Server error fetching submissions summary',
+      });
+    }
+  }
 );
 
 
@@ -922,15 +1093,15 @@ router.get('/submissions/:id', protect, restrictTo(['student']), async (req, res
     }
 
     // Decide which summary to expose as the generic "examinerSummary"
-      let examinerSummary = null;
-      if (sub.skill === 'writing' && sub.geminiWritingEvaluationSummary) {
-        examinerSummary = sub.geminiWritingEvaluationSummary;
-      } else if (sub.skill === 'speaking' && sub.geminiSpeakingEvaluationSummary) {
-        examinerSummary = sub.geminiSpeakingEvaluationSummary;
-      } else if (sub.geminiEvaluation && sub.geminiEvaluation.examiner_summary) {
-        // fallback to whatever is inside geminiEvaluation
-        examinerSummary = sub.geminiEvaluation.examiner_summary;
-      }
+    let examinerSummary = null;
+    if (sub.skill === 'writing' && sub.geminiWritingEvaluationSummary) {
+      examinerSummary = sub.geminiWritingEvaluationSummary;
+    } else if (sub.skill === 'speaking' && sub.geminiSpeakingEvaluationSummary) {
+      examinerSummary = sub.geminiSpeakingEvaluationSummary;
+    } else if (sub.geminiEvaluation && sub.geminiEvaluation.examiner_summary) {
+      // fallback to whatever is inside geminiEvaluation
+      examinerSummary = sub.geminiEvaluation.examiner_summary;
+    }
 
 
     return res.json({
@@ -955,9 +1126,9 @@ router.get('/submissions/:id', protect, restrictTo(['student']), async (req, res
 
       bandScore: sub.bandScore ?? null,
       geminiWritingEvaluationSummary: sub.geminiWritingEvaluationSummary ?? null,
-      geminiSpeakingEvaluationSummary: sub.geminiSpeakingEvaluationSummary ?? null, 
+      geminiSpeakingEvaluationSummary: sub.geminiSpeakingEvaluationSummary ?? null,
       examinerSummary,
-      
+
       student: {
         _id: sub.student?._id,
         name: sub.student?.name,
@@ -981,7 +1152,7 @@ router.post('/tests/:id/cleanup', protect, restrictTo(['student']), async (req, 
 
     // Find any stale attempts (started more than 6 hours ago)
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    
+
     const staleAttempts = await TestAttempt.find({
       student: userId,
       testSet: id,
