@@ -54,29 +54,6 @@ export default function StudentTestsPage() {
     fetchAssignedTests();
   }, []);
 
-  // Refresh data when page becomes visible (user returns from other pages)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        // Page is now visible, refresh test data
-        fetchAssignedTests();
-      }
-    };
-
-    const handleFocus = () => {
-      // Window gained focus, refresh test data
-      fetchAssignedTests();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
-
   async function fetchAssignedTests() {
     setLoading(true);
     setError(null);
