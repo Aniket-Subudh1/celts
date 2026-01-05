@@ -75,15 +75,6 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
 
     const batchIds = studentBatches.map((b) => b._id);
 
-    console.log('[student/tests] student:', String(studentId));
-    console.log(
-      '[student/tests] batches found:',
-      studentBatches.map((b) => ({
-        id: String(b._id),
-        name: b.name,
-      }))
-    );
-
     // Tests assigned via batches or directly
     const orClauses = [{ assignedStudents: studentId }];
     if (batchIds.length > 0) {
@@ -93,14 +84,6 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
     const tests = await TestSet.find({ $or: orClauses })
       .sort({ createdAt: -1 })
       .lean();
-
-    console.log('[student/tests] tests matched:', tests.map((t) => ({
-      id: String(t._id),
-      title: t.title,
-      type: t.type,
-      batches: (t.assignedBatches || []).map((x) => String(x)),
-    }))
-    );
 
     // Get test attempts for this student
     const testAttempts = await TestAttempt.find({

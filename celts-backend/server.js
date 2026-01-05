@@ -43,8 +43,9 @@ app.use(cors({
 }));
 
 
-const rateLimit = require('express-rate-limit');
-app.use('/api/auth', rateLimit({ windowMs: 60 * 1000, max: 20 }));
+
+// General API rate limiter - 500 requests per minute per IP
+
 
 console.log(`Starting CELTS Backend on port ${PORT}...`);
 
