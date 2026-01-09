@@ -6,6 +6,8 @@ const { protect, restrictTo } = require('../middleware/authMiddleware');
 
 const StudentStats = require('../models/StudentStats');
 const Submission = require('../models/Submission');
+const { paginate } = require('../utils/pagination');
+
 
 
 // GET /api/student/stats  (Returns the logged-in student's aggregated stats
@@ -88,10 +90,23 @@ router.get('/stats', protect, restrictTo(['student']), async (req, res) => {
 // Admin view of all student stats
 router.get("/admin/all", protect, restrictTo(["admin"]), async (req, res) => {
   try {
-    const stats = await StudentStats.find({})
-      .select("student systemId overallBand name email")
-      .lean();
-    return res.json(stats);
+    const paginated = await paginate(req, StudentStats, {
+      select: "student systemId overallBand name email",
+      sort: { createdAt: -1 },
+      defaultLimit: 50,
+      maxLimit: 60,
+    });
+
+    return res.json({
+      students: paginated.data,
+      pagination: {
+        page: paginated.page,
+        limit: paginated.limit,
+        total: paginated.total,
+        hasNext: paginated.hasNext,
+      },
+    });
+
   } catch (err) {
     console.error("[StudentStats admin/all] error:", err);
     return res
@@ -100,6 +115,38 @@ router.get("/admin/all", protect, restrictTo(["admin"]), async (req, res) => {
   }
 }
 );
+
+
+// Deletes api/student-stats/admin/purge ALL student stats (admin only)
+router.delete("/admin/purge", protect, restrictTo(["admin"]), async (req, res) => {
+  try {
+    const totalCount = await StudentStats.countDocuments();
+
+    if (totalCount === 0) {
+      return res.json({
+        message: "No student stats found to delete",
+        total: 0,
+        deleted: 0,
+      });
+    }
+
+    const deleteResult = await StudentStats.deleteMany({});
+
+    return res.json({
+      message: "Student stats purge completed",
+      total: totalCount,
+      deleted: deleteResult.deletedCount,
+      summary: `${deleteResult.deletedCount}/${totalCount} deleted`,
+    });
+  } catch (err) {
+    console.error("[DELETE /student-stats/admin/purge] error:", err);
+    return res.status(500).json({
+      message: "Failed to purge student stats",
+    });
+  }
+}
+);
+
 
 
 module.exports = router;

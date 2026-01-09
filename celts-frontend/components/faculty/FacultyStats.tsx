@@ -12,6 +12,7 @@ import {
   Search,
 } from "lucide-react";
 import api from "@/lib/api";
+import { usePagination } from "@/hooks/usePagination";
 
 type NullableNumber = number | null | undefined;
 
@@ -44,7 +45,7 @@ interface BatchStats {
 }
 
 interface StudentStatsRow {
-  _id: string;   studentId?: string;
+  _id: string; studentId?: string;
   name: string;
   email: string;
   systemId: string;
@@ -89,6 +90,8 @@ function bandBadgeClass(b: NullableNumber): string {
 }
 
 export function FacultyStats() {
+  const pagination = usePagination({ initialLimit: 10 });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -188,6 +191,22 @@ export function FacultyStats() {
       );
     });
   }, [students, batches, selectedBatchId, searchTerm]);
+
+  const paginatedStudents = useMemo(() => {
+    const start = (pagination.page - 1) * pagination.limit;
+    const end = start + pagination.limit;
+    return filteredStudents.slice(start, end);
+  }, [filteredStudents, pagination.page, pagination.limit]);
+
+
+  useEffect(() => {
+    pagination.reset();
+  }, [selectedBatchId, searchTerm]);
+
+  useEffect(() => {
+    pagination.setTotal(filteredStudents.length);
+  }, [filteredStudents, pagination]);
+
 
   function startOverride(student: StudentStatsRow, skill: "writing" | "speaking") {
     setOverrideError(null);
@@ -302,9 +321,9 @@ export function FacultyStats() {
               Coverage:{" "}
               {summary.totalStudentsInBatches
                 ? Math.round(
-                    ((summary.totalStudentsWithAnyTest || 0) * 100) /
-                      summary.totalStudentsInBatches
-                  )
+                  ((summary.totalStudentsWithAnyTest || 0) * 100) /
+                  summary.totalStudentsInBatches
+                )
                 : 0}
               %
             </p>
@@ -435,9 +454,9 @@ export function FacultyStats() {
                       <div className="text-[11px] text-muted-foreground">
                         {b.totalStudentsInBatch
                           ? Math.round(
-                              ((b.studentsWithAnyTest || 0) * 100) /
-                                b.totalStudentsInBatch
-                            )
+                            ((b.studentsWithAnyTest || 0) * 100) /
+                            b.totalStudentsInBatch
+                          )
                           : 0}
                         % coverage
                       </div>
@@ -525,7 +544,7 @@ export function FacultyStats() {
           </div>
 
           <div className="flex flex-col md:flex-row gap-2 md:items-center">
-            <select
+            {/* <select
               className="border rounded px-2 py-1 text-sm"
               value={selectedBatchId}
               onChange={(e) =>
@@ -540,7 +559,7 @@ export function FacultyStats() {
                   {b.name}
                 </option>
               ))}
-            </select>
+            </select> */}
 
             <div className="relative">
               <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -580,7 +599,7 @@ export function FacultyStats() {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.map((s) => (
+                {paginatedStudents.map((s) => (
                   <tr
                     key={s._id}
                     className="border-b last:border-0 hover:bg-muted/40 align-top"
@@ -620,7 +639,7 @@ export function FacultyStats() {
                         {canEditScores && (
                           <>
                             {editingStudentId === s._id &&
-                            editingSkill === "writing" ? (
+                              editingSkill === "writing" ? (
                               <div className="flex flex-col gap-1">
                                 <Input
                                   className="h-7 text-xs"
@@ -679,7 +698,7 @@ export function FacultyStats() {
                         {canEditScores && (
                           <>
                             {editingStudentId === s._id &&
-                            editingSkill === "speaking" ? (
+                              editingSkill === "speaking" ? (
                               <div className="flex flex-col gap-1">
                                 <Input
                                   className="h-7 text-xs"
@@ -737,6 +756,51 @@ export function FacultyStats() {
             </table>
           )}
         </div>
+
+
+
+
+
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+
+          <div className="text-sm text-muted-foreground">
+            Page{" "}
+            <span className="font-semibold text-foreground">
+              {pagination.page}
+            </span>{" "}
+            of{" "}
+            <span className="font-semibold text-foreground">
+              {Math.max(Math.ceil(pagination.total / pagination.limit), 1)}
+            </span>{" "}
+            • Total students:{" "}
+            <span className="font-semibold text-foreground">
+              {pagination.total}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!pagination.hasPrev}
+              onClick={pagination.prevPage}
+            >
+              Previous
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!pagination.hasNext}
+              onClick={pagination.nextPage}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+
+
+
       </Card>
     </div>
   );

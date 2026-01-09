@@ -9,6 +9,7 @@ export const navItems = [
   { href: "/admin/tests", label: "Create Your Test", icon: <Book className="w-5 h-5" /> },
   { href: "/admin/viewTest", label: "View Test", icon: <Book className="w-5 h-5" /> },
   { href: "/admin/testAttempts", label: "Test Attempts", icon: <AlertTriangle className="w-5 h-5" /> },
-  { href: "/admin/analytics", label: "Analytics", icon: <TrendingUp className="w-5 h-5" /> },
+  //{ href: "/admin/analytics", label: "Analytics", icon: <TrendingUp className="w-5 h-5" /> },
+  { href: "/admin/studentScoreManagement", label: "Student Score Management", icon: <Users className="w-5 h-5" /> },
   { href: "/admin/auditLog", label: "Audit Log", icon: <History className="w-5 h-5" /> },
 ]

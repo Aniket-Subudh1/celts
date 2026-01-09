@@ -9,8 +9,7 @@ import { navItems } from "@/components/admin/NavItems";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
-/* ================= TYPES ================= */
-
+// TYPES 
 type TestSet = {
     _id: string;
     title: string;
@@ -44,12 +43,9 @@ type SubmissionRow = {
     unattemptedCount?: number;
 };
 
-/* ================= PAGE ================= */
-
+//PAGE COMPONENT
 export default function ScoreCardPage() {
     const router = useRouter();
-
-    const [adminName, setAdminName] = useState("Admin");
 
     const [tests, setTests] = useState<TestSet[]>([]);
     const [batches, setBatches] = useState<Batch[]>([]);
@@ -60,18 +56,7 @@ export default function ScoreCardPage() {
     const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
     const [loading, setLoading] = useState(false);
 
-    /* ================= INIT ================= */
-
     useEffect(() => {
-        // 🔹 Get admin name from localStorage
-        if (typeof window !== "undefined") {
-            const name =
-                localStorage.getItem("celts_user_name") ||
-                localStorage.getItem("userName") ||
-                "Admin";
-            setAdminName(name);
-        }
-
         fetchTests();
         fetchBatches();
     }, []);
@@ -86,15 +71,11 @@ export default function ScoreCardPage() {
         if (res.ok) setBatches(res.data || []);
     }
 
-    /* ================= FETCH SUBMISSIONS ================= */
-
     async function fetchSubmissions(test: TestSet, batch: Batch) {
         setLoading(true);
         setSubmissions([]);
 
-        const res = await api.apiGet(
-            `/admin/testSet/${test._id}/batch/${batch._id}/submissions`
-        );
+        const res = await api.apiGet( `/admin/testSet/${test._id}/batch/${batch._id}/submissions`);
 
         if (res.ok) {
             setSubmissions(res.data || []);
@@ -105,8 +86,7 @@ export default function ScoreCardPage() {
         setLoading(false);
     }
 
-    /* ================= CSV EXPORT ================= */
-
+    // EXPORT CSV
     function exportCSV() {
         if (!selectedTest || submissions.length === 0) return;
 
@@ -160,10 +140,10 @@ export default function ScoreCardPage() {
     const testType = selectedTest?.type;
 
 
-    /* ================= RENDER ================= */
+    // RENDER
 
     return (
-        <DashboardLayout navItems={navItems} sidebarHeader={`Welcome, ${adminName}`}>
+        <DashboardLayout navItems={navItems} sidebarHeader="CELTS Admin" userName= "Admin" >
             <div className="space-y-6">
                 {/* HEADER */}
                 <div className="flex items-center gap-3">
@@ -179,8 +159,8 @@ export default function ScoreCardPage() {
                         <Card
                             key={t._id}
                             className={`p-4 cursor-pointer ${selectedTest?._id === t._id
-                                    ? "border-black"
-                                    : "hover:bg-muted"
+                                ? "border-black"
+                                : "hover:bg-muted"
                                 }`}
                             onClick={() => {
                                 setSelectedTest(t);

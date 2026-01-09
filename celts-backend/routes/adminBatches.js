@@ -4,35 +4,37 @@ const Batch = require('../models/Batch');
 const mongoose = require('mongoose'); 
 const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
+const { paginate } = require("../utils/pagination");
 
 // GET /api/admin/batches
 router.get('/', protect, restrictTo(['admin']), async (req, res) => {
   try {
-    const batches = await Batch.find({})
-      .populate({ path: 'faculty', select: 'name email systemId' })
-      .populate({ path: 'students', select: 'name email systemId' })
-      .sort({ createdAt: -1 })
-      .lean();
+    const result = await paginate(req, Batch, {
+      populate: [
+        { path: "faculty", select: "name email systemId" },
+        { path: "students", select: "name email systemId" }
+      ],
+      sort: { createdAt: -1 },
+      map: (b) => ({
+        _id: b._id,
+        name: b.name,
+        program: b.program,
+        year: b.year,
+        section: b.section,
+        createdAt: b.createdAt,
+        faculty: Array.isArray(b.faculty)
+          ? b.faculty.map(f => f?.name || f?.email || String(f?._id))
+          : [],
+        students: Array.isArray(b.students)
+          ? b.students.map(s => s?.name || s?.email || String(s?._id))
+          : []
+      })
+    });
 
-    const out = batches.map(b => ({
-      _id: b._id,
-      name: b.name,
-      program: b.program,
-      year: b.year,
-      section: b.section,
-      createdAt: b.createdAt,
-      faculty: Array.isArray(b.faculty)
-        ? b.faculty.map(f => f?.name || f?.email || String(f?._id))
-        : [],
-      students: Array.isArray(b.students)
-        ? b.students.map(s => s?.name || s?.email || String(s?._id))
-        : []
-    }));
-
-    res.json(out);
+    res.json(result);
   } catch (err) {
-    console.error('Error fetching batches:', err);
-    res.status(500).json({ message: 'Server error fetching batches' });
+    console.error("Error fetching batches:", err);
+    res.status(500).json({ message: "Server error fetching batches" });
   }
 });
 
@@ -125,47 +127,6 @@ router.post('/:batchId/assign-faculty/:facultyId', protect, restrictTo(['admin']
     res.status(500).json({ message: 'Server error assigning faculty' });
   }
 });
-
-// POST /api/admin/batches/:batchId/assign-student/:studentId  (Assign a student to a batch (only one batch per student allowed))
-router.post('/:batchId/assign-student/:studentId', protect, restrictTo(['admin']), async (req, res) => {
-  try {
-    const { batchId, studentId } = req.params;
-
-    //Validate student existence and role
-    const student = await User.findById(studentId);
-    if (!student) return res.status(404).json({ message: 'Student not found' });
-    if (student.role !== 'student') return res.status(400).json({ message: 'User is not a student' });
-
-    //Validate batch existence
-    const batch = await Batch.findById(batchId);
-    if (!batch) return res.status(404).json({ message: 'Batch not found' });
-
-    //Check if student already belongs to another batch
-    const existingBatch = await Batch.findOne({ students: studentId });
-    if (existingBatch && String(existingBatch._id) !== String(batchId)) {
-      return res.status(400).json({
-        message: `Student is already assigned to batch "${existingBatch.name}". Unassign first before adding to another batch.`
-      });
-    }
-
-    //Add only if not already in current batch
-    if (!batch.students.some(s => String(s) === String(studentId))) {
-      batch.students.push(studentId);
-      await batch.save();
-    }
-
-    const populated = await Batch.findById(batch._id)
-      .populate({ path: 'faculty', select: 'name email systemId' })
-      .populate({ path: 'students', select: 'name email systemId' })
-      .lean();
-
-    res.json({ message: 'Student assigned successfully', batch: populated });
-  } catch (err) {
-    console.error('Error assigning student:', err);
-    res.status(500).json({ message: 'Server error assigning student' });
-  }
-});
-
 
 
 
@@ -293,12 +254,22 @@ router.get('/:id', protect, restrictTo(['admin']), async (req, res) => {
 
     const batch = await Batch.findById(id)
       .populate({ path: 'faculty', select: '_id name email systemId' })
-      .populate({ path: 'students', select: '_id name email systemId' })
       .lean();
 
-    if (!batch) return res.status(404).json({ message: 'Batch not found' });
+    if (!batch) {
+      return res.status(404).json({ message: 'Batch not found' });
+    }
 
-    // return as-is (populated arrays with _id) so the frontend gets ids
+    //paginate ONLY students
+    const studentsResult = await paginate(req, User, {
+      filter: {
+        _id: { $in: batch.students || [] },
+        role: 'student',
+      },
+      select: '_id name email systemId',
+      sort: { name: 1 },
+    });
+
     return res.json({
       _id: batch._id,
       name: batch.name,
@@ -314,14 +285,16 @@ router.get('/:id', protect, restrictTo(['admin']), async (req, res) => {
             systemId: f.systemId
           }))
         : [],
-      students: Array.isArray(batch.students)
-        ? batch.students.map(s => ({
-            _id: s._id,
-            name: s.name,
-            email: s.email,
-            systemId: s.systemId
-          }))
-        : []
+      students: studentsResult.data,
+
+      studentsPagination: {
+        page: studentsResult.page,
+        limit: studentsResult.limit,
+        total: studentsResult.total,
+        totalPages: studentsResult.totalPages,
+        hasNext: studentsResult.hasNext,
+        hasPrev: studentsResult.hasPrev,
+      },
     });
   } catch (err) {
     console.error('Error fetching batch detail:', err);

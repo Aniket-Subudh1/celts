@@ -75,7 +75,7 @@ function getDescription(label: string) {
       return "Manage users, roles & accounts";
     case "Batch Management":
       return "View & configure student batches";
-      case "Create Test":
+    case "Create Your Test":
       return "Create, View and Edit your Tests";
     case "View Test":
       return "View Faculty created Tests";
@@ -87,6 +87,8 @@ function getDescription(label: string) {
       return "Insights into users, tests & performance";
     case "Audit Log":
       return "Check the Audit Log"; 
+    case "Student Score Management":
+      return "Manage and analyze student scores";
     default:
       return "Open module.";
   }

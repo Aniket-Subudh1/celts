@@ -57,7 +57,7 @@ function serializeUser(u) {
 }
 
 /**
- * POST /api/admin/users/import-csv
+ * POST /api/admin/csv/import-csv
  * Field: file (CSV)
  */
 router.post(

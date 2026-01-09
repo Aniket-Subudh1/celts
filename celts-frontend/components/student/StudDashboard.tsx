@@ -78,7 +78,7 @@ export function StudDashboard() {
     setStatsLoading(true);
     setStatsError(null);
     try {
-      const res = await api.apiGet("/student/stats");
+      const res = await api.apiGet("/studentStats/stats");
       if (!res.ok) {
         setStats(null);
         setStatsError(res.error?.message || "Failed to load stats");

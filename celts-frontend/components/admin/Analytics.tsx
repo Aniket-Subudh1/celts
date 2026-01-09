@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { buildPaginationQuery } from "@/utils/pagination";
 import {
     BarChart3,
     Users,
@@ -28,6 +29,7 @@ import {
     YAxis,
     CartesianGrid,
 } from "recharts";
+
 
 type AdminAnalyticsResponse = {
     totalUsers: number;
@@ -96,14 +98,14 @@ export function AdminAnalytics() {
         setLoading(true);
         setError(null);
         try {
+            const usersQuery = buildPaginationQuery(1, 50);
+
             const [statsRes, facRes, studRes, adminRes, bandRes] = await Promise.all([
                 api.apiGet("/admin/analytics"),
-                api.apiGet("/admin/users?role=faculty"),
-                api.apiGet("/admin/users?role=student"),
-                api.apiGet("/admin/users?role=admin"),
-                // expects an admin endpoint that returns an array of StudentStats-like docs
-                // e.g. GET /api/studentStats/admin/all
-                api.apiGet("/studentStats/admin/all"),
+                api.apiGet(`/admin/users?role=faculty&${usersQuery}`),
+                api.apiGet(`/admin/users?role=student&${usersQuery}`),
+                api.apiGet(`/admin/users?role=admin&${usersQuery}`),
+                api.apiGet(`/studentStats/admin/all?${usersQuery}`),
             ]);
 
             if (!statsRes.ok) {
@@ -111,23 +113,31 @@ export function AdminAnalytics() {
             }
 
             setAnalytics(statsRes.data || null);
-            setFaculty(Array.isArray(facRes.data) ? facRes.data : []);
-            setStudents(Array.isArray(studRes.data) ? studRes.data : []);
-            setAdmins(Array.isArray(adminRes.data) ? adminRes.data : []);
+            const facultyList = Array.isArray(facRes.data?.data)
+                ? facRes.data.data
+                : [];
+
+            const studentList = Array.isArray(studRes.data?.data)
+                ? studRes.data.data
+                : [];
+
+            const adminList = Array.isArray(adminRes.data?.data)
+                ? adminRes.data.data
+                : [];
+
+            setFaculty(facultyList);
+            setStudents(studentList);
+            setAdmins(adminList);
+
 
             // Build band map (studentId/systemId -> overallBand)
             if (bandRes.ok && Array.isArray(bandRes.data)) {
                 const map: Record<string, number | null> = {};
                 (bandRes.data as StudentBandStat[]).forEach((st: any) => {
-                    const overall =
-                        typeof st.overallBand === "number" ? st.overallBand : null;
-
-                    const idFromField =
-                        typeof st.student === "string" ? st.student : undefined;
-                    const idFromStudentId =
-                        typeof st.studentId === "string" ? st.studentId : undefined;
-                    const sysId =
-                        typeof st.systemId === "string" ? st.systemId : undefined;
+                    const overall = typeof st.overallBand === "number" ? st.overallBand : null;
+                    const idFromField = typeof st.student === "string" ? st.student : undefined;
+                    const idFromStudentId = typeof st.studentId === "string" ? st.studentId : undefined;
+                    const sysId = typeof st.systemId === "string" ? st.systemId : undefined;
 
                     if (idFromField) map[idFromField] = overall;
                     if (idFromStudentId) map[idFromStudentId] = overall;
