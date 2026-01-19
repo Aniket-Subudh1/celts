@@ -6,12 +6,13 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const TestSet = require('../models/TestSet');
 const Submission = require('../models/Submission');
+const Batch = require('../models/Batch');
+const StudentStats = require("../models/StudentStats");
 
 const { protect, restrictTo } = require('../middleware/authMiddleware');
 const { submissionQueue } = require('../services/queue');
 
 const adminAssignRoutes = require('./adminAssignments');
-const adminBulkRoutes = require('./adminBulk');
 const adminBatchRoutes = require('./adminBatches');
 const proctorRoutes = require('./proctor');
 const mediaRoutes = require('./media');
@@ -27,6 +28,8 @@ const adminUserRoutes = require('./adminUserRoutes');
 const csvuploadRoutes = require('./adminUserRoutes');
 const adminTestSetsRoutes = require('./adminTestSets');
 
+const { paginate } = require("../utils/pagination");
+
 
 
 // Root health check
@@ -35,7 +38,6 @@ router.get('/', (req, res) => res.json({ message: 'CELTS Backend running success
 // Mount other routers (these files should exist and export a router)
 router.use('/auth', require('./auth'));
 router.use('/admin/assign', adminAssignRoutes);
-router.use('/admin/bulk', adminBulkRoutes);
 router.use('/proctor', proctorRoutes);
 router.use('/media', mediaRoutes);
 router.use('/faculty', facultyRoutes);
@@ -43,7 +45,6 @@ router.use('/student', studentRoutes);
 router.use('/admin/batches', adminBatchRoutes);
 router.use('/teacher/tests', teacherTestsRoutes);  //faculty access
 router.use('/admin/testSet', adminTestSetsRoutes); // admin access
-router.use('/student', studentStatsRoutes);
 router.use('/studentStats', studentStatsRoutes);
 router.use("/admin", adminAuditRoutes);
 router.use('/security', securityRoutes);
@@ -53,6 +54,10 @@ router.use('/admin/users', adminUserRoutes);
 router.use('/admin/csv',csvuploadRoutes) 
 
 
+function isNum(v) {
+  return typeof v === "number" && !Number.isNaN(v);
+}
+
 
 // ADMIN: Get user
 router.get('/admin/users', protect, restrictTo(['admin']), async (req, res) => {
@@ -60,8 +65,15 @@ router.get('/admin/users', protect, restrictTo(['admin']), async (req, res) => {
     const { role } = req.query;
     const filter = {};
     if (role) filter.role = role;
-    const users = await User.find(filter).select('-password').sort({ createdAt: -1 }).lean();
-    res.json(users);
+    //const users = await User.find(filter).select('-password').sort({ createdAt: -1 }).lean();
+    //res.json(users);
+    const result = await paginate(req, User, {
+      filter,
+      select: '-password',
+      sort: { createdAt: -1 },
+    });
+    res.json(result);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Error fetching users' });
@@ -348,13 +360,10 @@ router.post('/admin/submission/:id/reprocess', protect, restrictTo(['admin', 'fa
 // GET /api/admin/tests
 router.get("/admin/tests", protect, restrictTo(["admin"]), async (req, res) => {
   try {
-    const tests = await TestSet.find({})
-      .populate("createdBy", "name systemId")
-      .sort({ createdAt: -1 })
-      .lean();
-
-    return res.json({
-      tests: tests.map((t) => ({
+    const result = await paginate(req, TestSet, {
+      populate: [{ path: "createdBy", select: "name systemId" }],
+      sort: { createdAt: -1 },
+      map: (t) => ({
         _id: t._id,
         title: t.title,
         description: t.description || "",
@@ -378,8 +387,10 @@ router.get("/admin/tests", protect, restrictTo(["admin"]), async (req, res) => {
             systemId: t.createdBy.systemId,
           }
           : null,
-      })),
+      }),
     });
+
+    return res.json(result);
   } catch (err) {
     console.error("[GET /admin/tests] error:", err);
     return res
@@ -388,6 +399,7 @@ router.get("/admin/tests", protect, restrictTo(["admin"]), async (req, res) => {
   }
 }
 );
+
 
 // GET /api/admin/tests/:id
 router.get("/admin/tests/:id", protect, restrictTo(["admin"]), async (req, res) => {
@@ -442,267 +454,368 @@ router.get("/admin/tests/:id", protect, restrictTo(["admin"]), async (req, res) 
 
 
 
-// GET /api/admin/test-attempts
-router.get("/admin/test-attempts", protect, restrictTo(["admin"]), async (req, res) => {
-  try {
-    const {
-      studentId,
-      testId,
-      status = "", // "started" | "completed" | "abandoned" | "violation_exit" | "" | "all"
-      page = 1,
-      limit = 20,
-    } = req.query;
+// GET /api/admin/student-score
+router.get(
+  "/admin/student-score",
+  protect,
+  restrictTo(["admin"]),
+  async (req, res) => {
+    try {
+      const mongoose = require("mongoose");
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+      /* ======================================================
+         HELPERS
+      ====================================================== */
+      function isNum(v) {
+        return typeof v === "number" && !Number.isNaN(v);
+      }
+
+      function avg(arr = []) {
+        const nums = arr.filter(isNum);
+        if (!nums.length) return null;
+        return nums.reduce((a, b) => a + b, 0) / nums.length;
+      }
+
+      function emptySummary() {
+        return {
+          totalStudentsInBatches: 0,
+          totalStudentsWithAnyTest: 0,
+          totalBatches: 0,
+          overallAvgBand: null,
+          readingAvg: null,
+          listeningAvg: null,
+          writingAvg: null,
+          speakingAvg: null,
+        };
+      }
+
+      /* ======================================================
+         QUERY PARAMS
+      ====================================================== */
+      const {
+        batchId,
+        search = "",
+        page = 1,
+        limit = 10,
+      } = req.query;
+
+      const batchPage = Math.max(1, parseInt(req.query.batchPage) || 1);
+      const batchLimit = Math.min(50, parseInt(req.query.batchLimit) || 10);
+
+      const studentPage = Math.max(1, parseInt(page));
+      const studentLimit = Math.min(100, parseInt(limit));
+
+      /* ======================================================
+         BATCH PAGINATION + SEARCH
+      ====================================================== */
+      req.query.page = batchPage;
+      req.query.limit = batchLimit;
+      req.query.search = search;
+
+      const batchPaginationResult = await paginate(req, Batch, {
+        select: "_id name students",
+        searchFields: ["name"],
+        sort: { createdAt: -1 },
+        defaultLimit: 10,
+      });
+
+      const batches = batchPaginationResult.data.map((b) => ({
+        _id: String(b._id),
+        name: b.name,
+        students: b.students || [],
+        totalStudentsInBatch: Array.isArray(b.students)
+          ? b.students.length
+          : 0,
+      }));
+
+      if (!batches.length) {
+        return res.json({
+          summary: emptySummary(),
+          batches: [],
+          batchPagination: {
+            page: batchPage,
+            limit: batchLimit,
+            total: 0,
+            hasNext: false,
+          },
+          students: [],
+          studentPagination: {
+            page: 1,
+            limit: 0,
+            total: 0,
+            hasNext: false,
+          },
+        });
+      }
+
+      /* ======================================================
+         STUDENT IDS (SOURCE OF TRUTH = Batch.students)
+      ====================================================== */
+      let studentIds = [];
+
+      if (batchId && mongoose.Types.ObjectId.isValid(batchId)) {
+        const batch = await Batch.findById(batchId)
+          .select("students")
+          .lean();
+
+        studentIds = batch?.students?.map(String) || [];
+      } else {
+        studentIds = batches.flatMap((b) =>
+          (b.students || []).map(String)
+        );
+      }
+
+      studentIds = [...new Set(studentIds)];
+
+      /* ======================================================
+         USERS
+      ====================================================== */
+      const users = await User.find({
+        _id: { $in: studentIds },
+        role: "student",
+      })
+        .select("_id name email systemId")
+        .lean();
+
+      const userMap = new Map(users.map((u) => [String(u._id), u]));
+
+      /* ======================================================
+         STUDENT STATS (OPTIONAL)
+      ====================================================== */
+      const statsDocs = await StudentStats.find({
+        student: { $in: studentIds },
+      }).lean();
+
+      const statsByStudentId = new Map(
+        statsDocs.map((s) => [String(s.student), s])
+      );
+
+      /* ======================================================
+         BUILD FULL STUDENT ROWS (INCLUDING NO-STATS)
+      ====================================================== */
+      let allStudentRows = studentIds.map((sid) => {
+        const u = userMap.get(sid);
+        const st = statsByStudentId.get(sid);
+
+        return {
+          _id: st?._id?.toString() || sid,
+          studentId: sid,
+          name: u?.name || st?.name || "",
+          email: u?.email || st?.email || "",
+          systemId: u?.systemId || st?.systemId || "",
+          batchName: st?.batchName || null,
+
+          readingBand: isNum(st?.readingBand) ? st.readingBand : null,
+          listeningBand: isNum(st?.listeningBand) ? st.listeningBand : null,
+          writingBand: isNum(st?.writingBand) ? st.writingBand : null,
+          speakingBand: isNum(st?.speakingBand) ? st.speakingBand : null,
+          overallBand: isNum(st?.overallBand) ? st.overallBand : null,
+          writingExaminerSummary: st?.writingExaminerSummary || null,
+          speakingExaminerSummary: st?.speakingExaminerSummary || null,
+        };
+      });
+
+      /* ======================================================
+         STUDENT SEARCH
+      ====================================================== */
+      const searchLower = search.toLowerCase().trim();
+
+      if (searchLower) {
+        allStudentRows = allStudentRows.filter((s) =>
+          s.name.toLowerCase().includes(searchLower) ||
+          s.email.toLowerCase().includes(searchLower) ||
+          s.systemId.toLowerCase().includes(searchLower)
+        );
+      }
+
+      /* ======================================================
+         STUDENT PAGINATION (AFTER BUILD + SEARCH)
+      ====================================================== */
+      const start = (studentPage - 1) * studentLimit;
+      const end = start + studentLimit;
+
+      const paginatedStudents = allStudentRows.slice(start, end);
+
+      /* ======================================================
+         SUMMARY (GLOBAL)
+      ====================================================== */
+      const summary = {
+        totalStudentsInBatches: studentIds.length,
+        totalStudentsWithAnyTest: statsDocs.length,
+        totalBatches: batchPaginationResult.total,
+        overallAvgBand: avg(statsDocs.map((s) => s.overallBand)),
+        readingAvg: avg(statsDocs.map((s) => s.readingBand)),
+        listeningAvg: avg(statsDocs.map((s) => s.listeningBand)),
+        writingAvg: avg(statsDocs.map((s) => s.writingBand)),
+        speakingAvg: avg(statsDocs.map((s) => s.speakingBand)),
+      };
+
+      /* ======================================================
+         RESPONSE
+      ====================================================== */
+      return res.json({
+        summary,
+
+        batches: batches.map((b) => ({
+          _id: b._id,
+          name: b.name,
+          totalStudentsInBatch: b.totalStudentsInBatch,
+        })),
+
+        batchPagination: {
+          page: batchPage,
+          limit: batchLimit,
+          total: batchPaginationResult.total,
+          hasNext: batchPage * batchLimit < batchPaginationResult.total,
+        },
+
+        students: paginatedStudents,
+
+        studentPagination: {
+          page: studentPage,
+          limit: studentLimit,
+          total: allStudentRows.length,
+          hasNext: end < allStudentRows.length,
+        },
+      });
+    } catch (err) {
+      console.error("[Admin Student Score] Error:", err);
+      return res.status(500).json({
+        message: "Server error generating admin student score",
+      });
+    }
+  }
+);
+
+
+
+// GET /api/admin/test-attempts - View all test attempts
+router.get('/admin/test-attempts', protect, restrictTo(['admin']), async (req, res) => {
+  try {
+    const { studentId, testId, status, page = 1, limit = 50 } = req.query;
 
     const filter = {};
-
     if (studentId && mongoose.Types.ObjectId.isValid(studentId)) {
       filter.student = studentId;
     }
-
     if (testId && mongoose.Types.ObjectId.isValid(testId)) {
       filter.testSet = testId;
     }
-
-    if (status && status !== "all") {
+    if (status) {
       filter.status = status;
     }
 
-    const [attempts, totalCount] = await Promise.all([
-      testAttempts.find(filter)
-        .sort({ startedAt: -1 })
-        .skip(skip)
-        .limit(limitNum)
-        .populate("student", "name email systemId")
-        .populate("testSet", "title type")
-        .populate("retryAllowedBy", "name email")
-        .lean(),
-      testAttempts.countDocuments(filter),
-    ]);
+    const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const formattedAttempts = attempts.map((a) => ({
-      _id: a._id,
-      student: {
-        _id: a.student?._id,
-        name: a.student?.name || "Unknown",
-        email: a.student?.email || "",
-        systemId: a.student?.systemId || "",
-      },
-      testSet: {
-        _id: a.testSet?._id,
-        title: a.testSet?.title || "Untitled Test",
-        type: a.testSet?.type || "",
-      },
-      attemptNumber: a.attemptNumber,
-      status: a.status,
-      startedAt: a.startedAt,
-      completedAt: a.completedAt,
-      exitReason: a.exitReason || "",
-      violations: (a.violations || []).map((v) => ({
-        type: v.type,
-        timestamp: v.timestamp,
-        details: v.details || "",
-      })),
-      isRetryAllowed: !!a.isRetryAllowed,
-      retryAllowedBy: a.retryAllowedBy
-        ? {
-          name: a.retryAllowedBy.name || "",
-          email: a.retryAllowedBy.email || "",
-        }
-        : null,
-      retryAllowedAt: a.retryAllowedAt || null,
-      retryReason: a.retryReason || "",
-      createdAt: a.createdAt,
-    }));
+    const attempts = await TestAttempt.find(filter)
+      .populate('student', 'name email systemId')
+      .populate('testSet', 'title type')
+      .populate('retryAllowedBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
-    const totalPages = Math.max(Math.ceil(totalCount / limitNum), 1);
+    const total = await TestAttempt.countDocuments(filter);
 
-    return res.json({
-      attempts: formattedAttempts,
+    res.json({
+      attempts,
       pagination: {
-        current: pageNum,
-        total: totalPages,
-        count: totalCount,
-      },
+        current: parseInt(page),
+        total: Math.ceil(total / parseInt(limit)),
+        count: total
+      }
     });
   } catch (err) {
-    console.error("[GET /admin/test-attempts] error:", err);
-    return res
-      .status(500)
-      .json({ message: "Server error fetching test attempts" });
+    console.error('[GET /admin/test-attempts] error:', err);
+    return res.status(500).json({ message: 'Server error' });
   }
-}
-);
+});
 
 
+// POST /api/admin/allow-retry - Allow a student to retry a test
+router.post('/admin/allow-retry', protect, restrictTo(['admin']), async (req, res) => {
+  const { studentId, testId, reason } = req.body;
 
-// POST /api/admin/allow-retry
-router.post("/admin/allow-retry", protect, restrictTo(["admin"]), async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(studentId) || !mongoose.Types.ObjectId.isValid(testId)) {
+    return res.status(400).json({ message: 'Invalid student or test ID' });
+  }
+
   try {
-    const { studentId, testId, reason } = req.body;
-
-    if (!studentId || !testId || !reason || !reason.trim()) {
-      return res
-        .status(400)
-        .json({ message: "studentId, testId and reason are required" });
-    }
-
-    if (
-      !mongoose.Types.ObjectId.isValid(studentId) ||
-      !mongoose.Types.ObjectId.isValid(testId)
-    ) {
-      return res.status(400).json({ message: "Invalid studentId or testId" });
-    }
-
-    // latest attempt of that student+test
-    const attempt = await testAttempts.findOne({
+    // Find the latest attempt for this student and test
+    const attempt = await TestAttempt.findOne({
       student: studentId,
-      testSet: testId,
-    })
-      .sort({ attemptNumber: -1, createdAt: -1 })
-      .populate("student", "name email systemId")
-      .populate("testSet", "title type");
+      testSet: testId
+    }).sort({ attemptNumber: -1 });
 
     if (!attempt) {
-      return res.status(404).json({ message: "Test attempt not found" });
+      return res.status(404).json({ message: 'No test attempt found' });
     }
 
-    if (attempt.isRetryAllowed) {
-      return res
-        .status(400)
-        .json({ message: "Retry already allowed for latest attempt" });
+    if (attempt.status === 'started') {
+      return res.status(400).json({ message: 'Test is currently in progress' });
     }
 
+    // Allow retry
     attempt.isRetryAllowed = true;
     attempt.retryAllowedBy = req.user._id;
     attempt.retryAllowedAt = new Date();
-    attempt.retryReason = reason.trim();
+    attempt.retryReason = reason || 'Admin override';
+
     await attempt.save();
 
-    // Optional audit log
-    if (AuditLog) {
-      try {
-        await AuditLog.create({
-          action: "allow_retry",
-          targetType: "testAttempts",
-          targetId: attempt._id,
-          changedBy: req.user._id,
-          meta: {
-            studentId,
-            testId,
-            attemptNumber: attempt.attemptNumber,
-            reason: attempt.retryReason,
-          },
-        });
-      } catch (logErr) {
-        console.error("[AuditLog allow_retry] error:", logErr);
-      }
-    }
-
-    return res.json({
-      message: "Retry permission granted",
+    res.json({
+      message: 'Retry permission granted',
       attempt: {
         _id: attempt._id,
+        student: attempt.student,
+        testSet: attempt.testSet,
+        attemptNumber: attempt.attemptNumber,
         isRetryAllowed: attempt.isRetryAllowed,
-        retryAllowedAt: attempt.retryAllowedAt,
-        retryReason: attempt.retryReason,
-      },
+        retryReason: attempt.retryReason
+      }
     });
+
   } catch (err) {
-    console.error("[POST /admin/allow-retry] error:", err);
-    return res
-      .status(500)
-      .json({ message: "Server error while allowing retry" });
+    console.error('[POST /admin/allow-retry] error:', err);
+    return res.status(500).json({ message: 'Server error' });
   }
-}
-);
+});
 
 
+// POST /api/admin/revoke-retry - Revoke retry permission
+router.post('/admin/revoke-retry', protect, restrictTo(['admin']), async (req, res) => {
+  const { studentId, testId } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(studentId) || !mongoose.Types.ObjectId.isValid(testId)) {
+    return res.status(400).json({ message: 'Invalid student or test ID' });
+  }
 
-// POST /api/admin/revoke-retry
-router.post("/admin/revoke-retry", protect, restrictTo(["admin"]), async (req, res) => {
   try {
-    const { studentId, testId } = req.body;
-
-    if (!studentId || !testId) {
-      return res
-        .status(400)
-        .json({ message: "studentId and testId are required" });
-    }
-
-    if (
-      !mongoose.Types.ObjectId.isValid(studentId) ||
-      !mongoose.Types.ObjectId.isValid(testId)
-    ) {
-      return res.status(400).json({ message: "Invalid studentId or testId" });
-    }
-
-    const attempt = await testAttempts.findOne({
+    const attempt = await TestAttempt.findOne({
       student: studentId,
       testSet: testId,
-      isRetryAllowed: true,
-    })
-      .sort({ attemptNumber: -1, createdAt: -1 })
-      .populate("student", "name email systemId")
-      .populate("testSet", "title type");
+      isRetryAllowed: true
+    }).sort({ attemptNumber: -1 });
 
     if (!attempt) {
-      return res.status(404).json({
-        message: "No attempt with retry allowed found for this student/test",
-      });
+      return res.status(404).json({ message: 'No retry permission found' });
     }
-
-    const prev = {
-      isRetryAllowed: attempt.isRetryAllowed,
-      retryAllowedBy: attempt.retryAllowedBy,
-      retryAllowedAt: attempt.retryAllowedAt,
-      retryReason: attempt.retryReason,
-    };
 
     attempt.isRetryAllowed = false;
     attempt.retryAllowedBy = null;
     attempt.retryAllowedAt = null;
-    // keep retryReason for history (optional)
+    attempt.retryReason = null;
+
     await attempt.save();
 
-    if (AuditLog) {
-      try {
-        await AuditLog.create({
-          action: "revoke_retry",
-          targetType: "TestAttempt",
-          targetId: attempt._id,
-          changedBy: req.user._id,
-          oldValue: prev,
-          newValue: {
-            isRetryAllowed: attempt.isRetryAllowed,
-            retryAllowedBy: attempt.retryAllowedBy,
-            retryAllowedAt: attempt.retryAllowedAt,
-            retryReason: attempt.retryReason,
-          },
-          meta: {
-            studentId,
-            testId,
-            attemptNumber: attempt.attemptNumber,
-          },
-        });
-      } catch (logErr) {
-        console.error("[AuditLog revoke_retry] error:", logErr);
-      }
-    }
+    res.json({ message: 'Retry permission revoked' });
 
-    return res.json({ message: "Retry permission revoked" });
   } catch (err) {
-    console.error("[POST /admin/revoke-retry] error:", err);
-    return res
-      .status(500)
-      .json({ message: "Server error while revoking retry" });
+    console.error('[POST /admin/revoke-retry] error:', err);
+    return res.status(500).json({ message: 'Server error' });
   }
-}
-);
+});
+
 
 
 module.exports = router;

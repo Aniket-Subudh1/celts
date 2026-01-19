@@ -472,7 +472,7 @@ export default function StudentTestsPage() {
                         // For now, redirect to dashboard where they can find their results
                         return (
                           <Link
-                            href="/student/dashboard"
+                            href="/student/scores"
                             className="w-full sm:w-auto"
                           >
                             <Button

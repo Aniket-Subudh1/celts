@@ -1295,7 +1295,7 @@ export default function TestCreateForm() {
                 Build tests with strict question-type control.
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            {/* <div className="flex items-center gap-3">
               <div className="text-right">
                 <div className="text-xs text-slate-500">Status</div>
                 <div className="text-sm font-medium text-slate-800">Draft</div>
@@ -1303,7 +1303,7 @@ export default function TestCreateForm() {
               <Button type="submit" disabled={loading} className="whitespace-nowrap">
                 {loading ? "Saving..." : "Create Test"}
               </Button>
-            </div>
+            </div> */}
           </div>
         </div>
 

@@ -157,7 +157,7 @@ The response MUST be a single json object with the exact shape:
     "lexical_resource": { "score": number, "feedback": string },
     "grammatical_range_accuracy": { "score": number, "feedback": string }
   },
-  "examiner_summary": string
+  "examiner_summary": string,
 }
 
 Rules:
@@ -166,10 +166,17 @@ Rules:
 - Feedback must be concise, IELTS-style, impersonal, and clearly linked to the band scores.
 
 The "examiner_summary" MUST be an in-depth evaluation that:
-- Mentions the overall band clearly.
-- Explicitly comments on Task Response, Coherence and Cohesion, Lexical Resource, and Grammatical Range and Accuracy.
-- Is written in paragraphs or clear sentences, not bullet points, but still concise and focused.
-- Explains what the candidate need to improve, based ONLY on the provided answer so as to increase the canidate bandScore in future.
+These must be written as clear, actionable examiner advice.
+- Explicitly comments on Task Response, Coherence and Cohesion, Lexical Resource, and Grammatical Range and Accuracy to improve score in which fields and how
+- Suggestions must be IELTS-specific, not generic study tips.
+- Do NOT repeat the same text from examiner_summary.
+- Do NOT mention band numbers directly.
+- Examples of acceptable guidance:
+  - "Include a clear overview paragraph summarising main trends."
+  - "Develop ideas with specific examples instead of general statements."
+  - "Use a wider range of complex sentence structures with fewer errors."
+  - "Avoid memorised phrases; use topic-specific vocabulary."
+- Write in third person only ("the candidate should…").
 `.trim();
 
   const res = await ai.chat.completions.create({
@@ -258,7 +265,8 @@ Return ONLY valid json:
     "vocabulary": number,
     "grammar": number,
     "pronunciation": number
-  }
+  },
+  "examiner_summary": string,
 }
   Rules:
 - "band_score" must be between 1 and 9.0 (it may be .0 or .5).
@@ -269,7 +277,15 @@ The "examiner_summary" MUST be an in-depth evaluation that:
 - Mentions the overall band clearly.
 - Explicitly comments on fluency, vocabulary, grammer and pronunciation
 - Is written in paragraphs or clear sentences, not bullet points, but still concise and focused.
-- Explains what the candidate need to improve, based ONLY on the provided answer so as to increase the canidate bandScore in future.
+- Each suggestion must describe what the candidate should SAY or DO differently.
+- Advice must be practical and speaking-focused.
+- Avoid generic advice like "practice more".
+- Examples:
+  - "Extend answers by explaining reasons and giving examples."
+  - "Reduce pauses by using simple fillers such as 'well' or 'actually'."
+  - "Use a wider range of topic-specific vocabulary instead of repetition."
+  - "Improve pronunciation of word endings and sentence stress."
+- Write in third person only.
 `.trim();
 
     const res = await ai.chat.completions.create({
@@ -324,8 +340,7 @@ The "examiner_summary" MUST be an in-depth evaluation that:
     criteria_breakdown: overallCriteria,
     per_question: perQuestion,
     transcription: allTranscriptions.join("\n\n"),
-    examiner_summary:
-      "The candidate's speaking performance was assessed based on all responses collectively, considering fluency, coherence, vocabulary range, grammatical accuracy, pronunciation, and task coverage across the entire speaking test.",
+    examiner_summary: parsed.examiner_summary,
   };
 }
 
@@ -454,7 +469,8 @@ async function gradeSubmission(jobData) {
     }
 
     finalBand = maxMarks ? roundHalf((totalMarks / maxMarks) * 9) : null;
-    const summary = buildDetailedWritingSummary(tasks, finalBand);
+    //const summary = buildDetailedWritingSummary(tasks, finalBand);
+    const summary = tasks.map((t, i) => `Task ${i + 1}:\n${t.evaluation.examiner_summary}`).join("\n\n");
 
     await Submission.findByIdAndUpdate(submissionId, {
       status: "graded",

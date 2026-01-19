@@ -8,6 +8,9 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { navItems } from "@/components/admin/NavItems";
 import api from "@/lib/api";
+import { usePagination } from "@/hooks/usePagination";
+import { buildPaginationQuery } from "@/utils/pagination";
+import { Button } from "@/components/ui/button";
 
 const staticPermissions = [
   {
@@ -63,6 +66,11 @@ export default function PermissionsPage() {
   const [loadingFaculty, setLoadingFaculty] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const facultyPg = usePagination({
+    initialPage: 1,
+    initialLimit: 10,
+  });
+
 
   useEffect(() => {
     const storedUser = localStorage.getItem("celts_user");
@@ -80,15 +88,23 @@ export default function PermissionsPage() {
     setLoadingFaculty(true);
     setError(null);
     try {
-      const res = await api.apiGet("/admin/users?role=faculty");
+      // const res = await api.apiGet("/admin/users?role=faculty");
+      const params = new URLSearchParams(
+        buildPaginationQuery(facultyPg.page, facultyPg.limit, {
+          role: "faculty",
+        }) as any
+      ).toString();
+
+      const res = await api.apiGet(`/admin/users?${params}`);
+
       if (!res.ok) {
         setError(res.error?.message || "Failed to load faculty list");
         setFacultyList([]);
         setLoadingFaculty(false);
         return;
       }
-      const data: FacultyUser[] = res.data ?? [];
-      setFacultyList(data);
+      setFacultyList(Array.isArray(res.data?.data) ? res.data.data : []);
+      facultyPg.setTotal(res.data?.total || 0);
     } catch (err: any) {
       console.error("[PermissionsPage] fetchFaculty error:", err);
       setError(err?.message || "Network error");
@@ -100,7 +116,7 @@ export default function PermissionsPage() {
 
   useEffect(() => {
     fetchFaculty();
-  }, []);
+  }, [facultyPg.page, facultyPg.limit]);
 
   async function handleToggleEditScores(
     facultyId: string,
@@ -125,12 +141,12 @@ export default function PermissionsPage() {
         prev.map((f) =>
           f._id === facultyId
             ? {
-                ...f,
-                facultyPermissions: {
-                  ...(f.facultyPermissions || {}),
-                  canEditScores: nextValue,
-                },
-              }
+              ...f,
+              facultyPermissions: {
+                ...(f.facultyPermissions || {}),
+                canEditScores: nextValue,
+              },
+            }
             : f
         )
       );
@@ -192,7 +208,7 @@ export default function PermissionsPage() {
             </div>
           </div>
 
-          <div className="mt-5 overflow-x-auto rounded-md border border-slate-100">
+          <div className="mt-5 rounded-md border border-slate-100">
             <table className="w-full min-w-[640px] table-auto">
               <thead className="bg-slate-50">
                 <tr>
@@ -361,6 +377,36 @@ export default function PermissionsPage() {
               </tbody>
             </table>
           </div>
+
+          {/* PAGINATION FOOTER */}
+          <div className="flex items-center justify-between px-4 py-3 border-t bg-slate-50">
+            <div className="text-sm text-slate-600">
+              Page <strong>{facultyPg.page}</strong> of{" "}
+              <strong>{Math.max(Math.ceil(facultyPg.total / facultyPg.limit), 1)}</strong>{" "}
+              · Total <strong>{facultyPg.total}</strong> faculty
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!facultyPg.hasPrev || loadingFaculty}
+                onClick={facultyPg.prevPage}
+              >
+                Prev
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!facultyPg.hasNext || loadingFaculty}
+                onClick={facultyPg.nextPage}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+
         </Card>
       </div>
     </DashboardLayout>

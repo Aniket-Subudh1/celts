@@ -185,7 +185,7 @@ export function CreateAdminTest() {
     }
   }
 
-  // ---------- READING BLOCKS ----------
+  // READING BLOCKS 
 
   function addReadingBlock() {
     setReadingBlocks(prev => [
@@ -241,8 +241,7 @@ export function CreateAdminTest() {
     );
   }
 
-  // ---------- LISTENING BLOCKS ----------
-
+  // LISTENING BLOCKS 
   function addListeningBlock() {
     setListeningBlocks(prev => [
       ...prev,
@@ -311,8 +310,7 @@ export function CreateAdminTest() {
     );
   }
 
-  // ---------- LISTENING AUDIO UPLOAD ----------
-
+  //LISTENING AUDIO UPLOAD 
   function handleListeningFileSelected(blockId: string, file?: File) {
     setListeningFiles(prev => ({ ...prev, [blockId]: file || null }));
     setListeningUploadState(prev => ({ ...prev, [blockId]: { uploading: false, error: null } }));
@@ -416,7 +414,7 @@ export function CreateAdminTest() {
     }
   }
 
-  // ---------- QUESTION IMAGE UPLOAD (WRITING/SPEAKING) ----------
+  // QUESTION IMAGE UPLOAD (WRITING/SPEAKING) 
 
   function handleQuestionImageFileSelected(idx: number, file?: File) {
     setQuestionImageFiles(prev => {
@@ -932,7 +930,7 @@ export function CreateAdminTest() {
     }
   }
 
-  // ---------- EDITORS ----------
+  // EDIT MCQ QUESTIONS
 
   function renderMcqEditor(
     q: McqQuestion,
@@ -1277,8 +1275,6 @@ export function CreateAdminTest() {
     );
   }
 
-  // ---------- RENDER ----------
-
   return (
     <>
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -1291,7 +1287,7 @@ export function CreateAdminTest() {
                 Build tests with strict question-type control.
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            {/* <div className="flex items-center gap-3">
               <div className="text-right">
                 <div className="text-xs text-slate-500">Status</div>
                 <div className="text-sm font-medium text-slate-800">Draft</div>
@@ -1299,7 +1295,7 @@ export function CreateAdminTest() {
               <Button type="submit" disabled={loading} className="whitespace-nowrap">
                 {loading ? "Saving..." : "Create Test"}
               </Button>
-            </div>
+            </div> */}
           </div>
         </div>
 

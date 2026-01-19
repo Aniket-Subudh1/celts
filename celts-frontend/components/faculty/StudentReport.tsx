@@ -16,6 +16,8 @@ import {
   Loader2,
 } from "lucide-react";
 import api from "@/lib/api";
+import { usePagination } from "@/hooks/usePagination";
+import { getTotalPages } from "@/utils/pagination";
 
 type NullableNumber = number | null | undefined;
 
@@ -128,6 +130,17 @@ function bandBadgeClass(b: NullableNumber): string {
 }
 
 export function StudentReport() {
+  const pagination = usePagination({
+    initialPage: 1,
+    initialLimit: 10,
+  });
+  const totalPages = Math.max(
+    Math.ceil(pagination.total / pagination.limit),
+    1
+  );
+
+  const [gotoPage, setGotoPage] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -161,6 +174,20 @@ export function StudentReport() {
   );
 
   const [selectedSkill, setSelectedSkill] = useState<SkillKey | null>(null);
+
+  function handleGotoPage() {
+  const pageNum = Number(gotoPage);
+
+  if (Number.isNaN(pageNum)) return;
+
+  const clamped = Math.min(
+    Math.max(pageNum, 1),
+    totalPages
+  );
+
+  pagination.setPage(clamped);
+  setGotoPage("");
+}
 
   async function fetchStats() {
     setLoading(true);
@@ -201,6 +228,11 @@ export function StudentReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    pagination.reset();
+  }, [searchTerm, selectedBatchId]);
+
+
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
       if (selectedBatchId !== "all") {
@@ -220,6 +252,22 @@ export function StudentReport() {
     });
   }, [students, batches, selectedBatchId, searchTerm]);
 
+
+  const paginatedStudents = useMemo(() => {
+    pagination.setTotal(filteredStudents.length);
+
+    const start = (pagination.page - 1) * pagination.limit;
+    const end = start + pagination.limit;
+
+    return filteredStudents.slice(start, end);
+  }, [
+    filteredStudents,
+    pagination.page,
+    pagination.limit,
+  ]);
+
+
+
   // Fetch full report for a selected student
   async function loadStudentReport(student: StudentStatsRow) {
     setSelectedStudent(student);
@@ -230,9 +278,6 @@ export function StudentReport() {
     setSelectedSkill(null);
 
     try {
-      // NOTE:
-      // These endpoints are expected on backend (similar to /student/stats & /student/submissions/summary)
-      // where :id is the StudentStats document id (same as used in override-band).
       const statsRes = await api.apiGet(`/faculty/students/${student._id}/stats`);
       const summaryRes = await api.apiGet(
         `/faculty/students/${student._id}/submissions/summary`
@@ -358,7 +403,7 @@ export function StudentReport() {
             </div>
           </div>
 
-          <div className="overflow-x-auto max-h-[430px]">
+          <div className="overflow-x-auto">
             {loading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -396,12 +441,11 @@ export function StudentReport() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStudents.map((s) => (
+                  {paginatedStudents.map((s) => (
                     <tr
                       key={s._id}
-                      className={`border-b last:border-0 hover:bg-muted/40 ${
-                        selectedStudent?._id === s._id ? "bg-muted/60" : ""
-                      }`}
+                      className={`border-b last:border-0 hover:bg-muted/40 ${selectedStudent?._id === s._id ? "bg-muted/60" : ""
+                        }`}
                     >
                       <td className="px-3 py-2">
                         <div className="font-medium">{s.name}</div>
@@ -450,6 +494,85 @@ export function StudentReport() {
               </table>
             )}
           </div>
+
+
+
+
+
+          {/* Pagination footer */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+
+  {/* Page info */}
+  <div className="text-sm text-muted-foreground">
+    Page{" "}
+    <span className="font-semibold text-foreground">
+      {pagination.page}
+    </span>{" "}
+    of{" "}
+    <span className="font-semibold text-foreground">
+      {totalPages}
+    </span>{" "}
+    • Total students:{" "}
+    <span className="font-semibold text-foreground">
+      {pagination.total}
+    </span>
+  </div>
+
+  {/* Controls */}
+  <div className="flex items-center gap-2 flex-wrap">
+
+    {/* Previous */}
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={!pagination.hasPrev}
+      onClick={pagination.prevPage}
+    >
+      Previous
+    </Button>
+
+    {/* Next */}
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={!pagination.hasNext}
+      onClick={pagination.nextPage}
+    >
+      Next
+    </Button>
+
+    {/* Go to page */}
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-muted-foreground">
+        Go to
+      </span>
+      <Input
+        type="number"
+        min={1}
+        max={totalPages}
+        value={gotoPage}
+        onChange={(e) => setGotoPage(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleGotoPage();
+        }}
+        className="h-8 w-20 text-sm"
+        placeholder="Page"
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={handleGotoPage}
+        disabled={!gotoPage}
+      >
+        Go
+      </Button>
+    </div>
+  </div>
+</div>
+
+
+
+
         </Card>
 
         {/* Selected student's report card */}
@@ -546,14 +669,12 @@ export function StudentReport() {
                       key={key}
                       type="button"
                       onClick={() => setSelectedSkill(key)}
-                      className={`relative group text-left focus:outline-none ${
-                        isActive ? "ring-2 ring-primary ring-offset-2 rounded-xl" : ""
-                      }`}
+                      className={`relative group text-left focus:outline-none ${isActive ? "ring-2 ring-primary ring-offset-2 rounded-xl" : ""
+                        }`}
                     >
                       <Card
-                        className={`w-full py-4 px-3 flex flex-col items-center justify-center text-center border-slate-200 shadow-sm rounded-xl transition-transform ${
-                          isActive ? "bg-primary/5 scale-[1.02]" : "hover:scale-[1.01]"
-                        }`}
+                        className={`w-full py-4 px-3 flex flex-col items-center justify-center text-center border-slate-200 shadow-sm rounded-xl transition-transform ${isActive ? "bg-primary/5 scale-[1.02]" : "hover:scale-[1.01]"
+                          }`}
                       >
                         <Icon className="w-5 h-5 text-primary mb-1.5" />
                         <p className="text-sm font-medium text-slate-900">{label}</p>

@@ -14,6 +14,8 @@ import {
 import api from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { Trash2, Layers, Eye, Shield } from "lucide-react";
+import { usePagination } from "@/hooks/usePagination";
+import { buildPaginationQuery } from "@/utils/pagination";
 
 type Option = { text: string };
 
@@ -87,8 +89,9 @@ export function ViewTestForm() {
 
   const [batches, setBatches] = useState<Batch[]>([]);
   const [assigningTest, setAssigningTest] = useState<TestSet | null>(null);
-  const [assignSelected, setAssignSelected] = useState<string | null>(null);
+  const [assignSelected, setAssignSelected] = useState<string[]>([]);
   const [assignLoading, setAssignLoading] = useState(false);
+  const [batchSearch, setBatchSearch] = useState("");
 
   const [viewingTest, setViewingTest] = useState<TestSet | null>(null);
   const [editedQuestions, setEditedQuestions] = useState<Question[]>([]);
@@ -100,6 +103,17 @@ export function ViewTestForm() {
     { uploading: boolean; error?: string | null; successMessage?: string }[]
   >([]);
 
+
+  // REMOVE UI
+  const [removeBatchTest, setRemoveBatchTest] = useState<TestSet | null>(null);
+  const [removeSelected, setRemoveSelected] = useState<string[]>([]);
+  const [removeSearch, setRemoveSearch] = useState("");
+  const [removeLoading, setRemoveLoading] = useState(false);
+
+
+  const pagination = usePagination({ initialLimit: 10 });
+
+
   useEffect(() => {
     fetchTests();
     fetchBatches();
@@ -109,14 +123,25 @@ export function ViewTestForm() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.apiGet("/teacher/tests?mine=true");
+      const query = buildPaginationQuery(
+        pagination.page,
+        pagination.limit,
+        { mine: "true" }
+      );
+      const res = await api.apiGet(`/teacher/tests?${query}`);
+      //const res = await api.apiGet("/teacher/tests?mine=true");
       if (!res.ok) {
         console.error("[fetchTests] error:", res);
         setError(res.error?.message || "Failed to fetch tests");
         setTests([]);
         return;
       }
-      setTests(res.data || []);
+      // setTests(res.data || []);
+      const { tests = [], pagination: meta } = res.data || {};
+      setTests(Array.isArray(tests) ? tests : []);
+      if (meta) {
+        pagination.setTotal(meta.total ?? 0);
+      }
     } catch (err: any) {
       console.error("[fetchTests] exception:", err);
       setError(err.message || "Network error");
@@ -125,6 +150,11 @@ export function ViewTestForm() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    fetchTests();
+  }, [pagination.page]);
+
 
   async function fetchBatches() {
     try {
@@ -135,20 +165,23 @@ export function ViewTestForm() {
         setBatches([]);
         return;
       }
-      const raw = res.data;
-      const normalized: Batch[] = (Array.isArray(raw) ? raw : []).map(
-        (r: any, i: number) => {
-          if (!r) return { _id: String(i), name: String(r) };
-          if (typeof r === "string") return { _id: String(i), name: r };
-          if (r._id && (r.name || r.title)) return { _id: r._id, name: r.name || r.title };
-          if (r._id && r.name) return { _id: r._id, name: r.name };
-          if (r.name && typeof r.name === "string") return { _id: r._id || String(i), name: r.name };
+      const list = Array.isArray(res.data?.data)
+        ? res.data.data
+        : Array.isArray(res.data)
+          ? res.data
+          : [];
 
-          return {
-            _id: r._id || r.id || String(i),
-            name: r.name || r.title || JSON.stringify(r).slice(0, 40),
-          };
-        }
+      const normalized: Batch[] = list.map((r: any, i: number) => {
+        if (!r) return { _id: String(i), name: String(r) };
+        if (typeof r === "string") return { _id: String(i), name: r };
+        if (r._id && r.name) return { _id: r._id, name: r.name };
+        if (r._id && r.title) return { _id: r._id, name: r.title };
+
+        return {
+          _id: r._id || r.id || String(i),
+          name: r.name || r.title || "Unnamed batch",
+        };
+      }
       );
       setBatches(normalized);
     } catch (err: any) {
@@ -157,9 +190,30 @@ export function ViewTestForm() {
     }
   }
 
+  const filteredBatches = batches.filter((b) =>
+    b.name.toLowerCase().includes(batchSearch.toLowerCase())
+  );
+
+  const assignedBatchIds: string[] = Array.isArray(
+    removeBatchTest?.assignedBatches
+  )
+    ? removeBatchTest!.assignedBatches
+    : [];
+
+  const assignedBatchList = batches.filter((b) =>
+    assignedBatchIds.includes(b._id)
+  );
+
+  const filteredRemoveBatches = assignedBatchList.filter((b) =>
+    b.name.toLowerCase().includes(removeSearch.toLowerCase())
+  );
+
+
+
+
   const openAssignDialog = (t: TestSet) => {
     setAssigningTest(t);
-    setAssignSelected(null);
+    setAssignSelected([]);
   };
 
   const handleAssignToBatch = async () => {
@@ -172,9 +226,15 @@ export function ViewTestForm() {
 
       console.log("[Assign] update test", assigningTest._id, newAssigned);
 
-      const res = await api.apiPut(`/teacher/tests/${assigningTest._id}`, {
-        assignedBatches: newAssigned,
-      });
+      // const res = await api.apiPut(`/teacher/tests/${assigningTest._id}`, {
+      //   assignedBatches: newAssigned,
+      // });
+
+      const res = await api.apiPatch(`/teacher/tests/${assigningTest._id}/assign-batches`,
+        { batchIds: assignSelected }
+      );
+
+
 
       setAssignLoading(false);
 
@@ -182,8 +242,8 @@ export function ViewTestForm() {
         console.error("[Assign] server error:", res);
         alert(
           res.error?.message ||
-            res.data?.message ||
-            `Failed to assign (status ${res.status})`
+          res.data?.message ||
+          `Failed to assign (status ${res.status})`
         );
         return;
       }
@@ -248,64 +308,64 @@ export function ViewTestForm() {
 
       const normalizedQuestions: Question[] = Array.isArray(fullTest.questions)
         ? fullTest.questions.map((qAny: any) => {
-            const q: any = { ...(qAny || {}) };
+          const q: any = { ...(qAny || {}) };
 
-            // Ensure a questionType
-            if (!q.questionType) {
-              if (Array.isArray(q.options) && q.options.length > 0)
-                q.questionType = "mcq";
-              else q.questionType = "mcq";
+          // Ensure a questionType
+          if (!q.questionType) {
+            if (Array.isArray(q.options) && q.options.length > 0)
+              q.questionType = "mcq";
+            else q.questionType = "mcq";
+          }
+
+          // Normalize MCQ
+          if (q.questionType === "mcq") {
+            q.options =
+              Array.isArray(q.options) && q.options.length > 0
+                ? q.options
+                : [{ text: "" }, { text: "" }];
+            q.correctIndex =
+              typeof q.correctIndex === "number" ? q.correctIndex : 0;
+          }
+
+          // Normalize MATCH
+          if (q.questionType === "match") {
+            // Ensure left/right arrays with same length
+            let left = Array.isArray(q.leftItems) ? q.leftItems : ["", ""];
+            let right = Array.isArray(q.rightItems) ? q.rightItems : ["", ""];
+
+            const minLen = Math.max(2, Math.min(left.length || 0, right.length || 0));
+            left = left.slice(0, minLen);
+            right = right.slice(0, minLen);
+            while (left.length < minLen) left.push("");
+            while (right.length < minLen) right.push("");
+
+            q.leftItems = left;
+            q.rightItems = right;
+
+            // 3–4 options
+            if (!Array.isArray(q.options) || q.options.length < 3) {
+              q.options = [{ text: "" }, { text: "" }, { text: "" }];
+            }
+            if (q.options.length > 4) {
+              q.options = q.options.slice(0, 4);
             }
 
-            // Normalize MCQ
-            if (q.questionType === "mcq") {
-              q.options =
-                Array.isArray(q.options) && q.options.length > 0
-                  ? q.options
-                  : [{ text: "" }, { text: "" }];
-              q.correctIndex =
-                typeof q.correctIndex === "number" ? q.correctIndex : 0;
+            if (
+              typeof q.correctIndex !== "number" ||
+              q.correctIndex < 0 ||
+              q.correctIndex >= q.options.length
+            ) {
+              q.correctIndex = 0;
             }
+          }
 
-            // Normalize MATCH
-            if (q.questionType === "match") {
-              // Ensure left/right arrays with same length
-              let left = Array.isArray(q.leftItems) ? q.leftItems : ["", ""];
-              let right = Array.isArray(q.rightItems) ? q.rightItems : ["", ""];
+          q.marks = typeof q.marks === "number" ? q.marks : 1;
+          q.prompt = q.prompt ?? "";
+          q.sectionId = q.sectionId ?? null;
+          q.imageUrl = q.imageUrl ?? null;
 
-              const minLen = Math.max(2, Math.min(left.length || 0, right.length || 0));
-              left = left.slice(0, minLen);
-              right = right.slice(0, minLen);
-              while (left.length < minLen) left.push("");
-              while (right.length < minLen) right.push("");
-
-              q.leftItems = left;
-              q.rightItems = right;
-
-              // 3–4 options
-              if (!Array.isArray(q.options) || q.options.length < 3) {
-                q.options = [{ text: "" }, { text: "" }, { text: "" }];
-              }
-              if (q.options.length > 4) {
-                q.options = q.options.slice(0, 4);
-              }
-
-              if (
-                typeof q.correctIndex !== "number" ||
-                q.correctIndex < 0 ||
-                q.correctIndex >= q.options.length
-              ) {
-                q.correctIndex = 0;
-              }
-            }
-
-            q.marks = typeof q.marks === "number" ? q.marks : 1;
-            q.prompt = q.prompt ?? "";
-            q.sectionId = q.sectionId ?? null;
-            q.imageUrl = q.imageUrl ?? null;
-
-            return q as Question;
-          })
+          return q as Question;
+        })
         : [];
 
       const safeTest: TestSet = {
@@ -675,11 +735,11 @@ export function ViewTestForm() {
         prev.map((t) =>
           t._id === viewingTest._id
             ? updatedTest || {
-                ...t,
-                questions: sanitizedQuestions,
-                title: viewingTest.title,
-                description: viewingTest.description,
-              }
+              ...t,
+              questions: sanitizedQuestions,
+              title: viewingTest.title,
+              description: viewingTest.description,
+            }
             : t
         )
       );
@@ -790,8 +850,8 @@ export function ViewTestForm() {
                   </td>
                   <td className="px-6 py-4 text-sm">{test.type}</td>
                   <td className="px-6 py-4 text-sm">
-                    {test.assignedBatches &&
-                    test.assignedBatches.length > 0 ? (
+                    {/* {test.assignedBatches &&
+                      test.assignedBatches.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {test.assignedBatches.map((bid) => {
                           const b = batches.find((x) => x._id === bid);
@@ -817,7 +877,36 @@ export function ViewTestForm() {
                       <span className="text-sm text-muted-foreground">
                         Not assigned
                       </span>
+                    )} */}
+
+
+
+
+                    {test.assignedBatches && test.assignedBatches.length > 0 ? (
+                      <button
+                        className="flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                        onClick={() => {
+                          setRemoveBatchTest(test);
+                          setRemoveSelected([]);
+                          setRemoveSearch("");
+                        }}
+                      >
+                        {test.assignedBatches.length} batches
+                        <span className="text-xs">▼</span>
+                      </button>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        Not assigned
+                      </span>
                     )}
+
+
+
+
+
+
+
+
                   </td>
                   <td className="px-6 py-4 text-sm">
                     {test.questions?.length ?? 0}
@@ -857,10 +946,49 @@ export function ViewTestForm() {
             )}
           </tbody>
         </table>
+
+
+
+        {/* PAGINATION FOOTER */}
+        <div className="flex items-center justify-between mt-4 px-2">
+          <p className="text-sm text-muted-foreground">
+            Page <strong>{pagination.page}</strong> of{" "}
+            <strong>
+              {Math.max(
+                Math.ceil(pagination.total / pagination.limit),
+                1
+              )}
+            </strong>{" "}
+            • <strong>{pagination.total}</strong> tests
+          </p>
+
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!pagination.hasPrev || loading}
+              onClick={pagination.prevPage}
+            >
+              Previous
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!pagination.hasNext || loading}
+              onClick={pagination.nextPage}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+
+
+
       </Card>
 
       {/* ASSIGN DIALOG */}
-      <Dialog open={!!assigningTest} onOpenChange={() => setAssigningTest(null)}>
+      {/* <Dialog open={!!assigningTest} onOpenChange={() => setAssigningTest(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Assign Test to Batch</DialogTitle>
@@ -903,7 +1031,179 @@ export function ViewTestForm() {
             </Button>
           </DialogFooter>
         </DialogContent>
+      </Dialog> */}
+
+
+
+      <Dialog
+        open={!!assigningTest}
+        onOpenChange={() => {
+          setAssigningTest(null);
+          setAssignSelected([]);
+          setBatchSearch("");
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Test to Batches</DialogTitle>
+          </DialogHeader>
+
+          <div className="py-2 space-y-4">
+            <Input
+              placeholder="Search batches..."
+              value={batchSearch}
+              onChange={(e) => setBatchSearch(e.target.value)}
+            />
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setAssignSelected(filteredBatches.map((b) => b._id))
+                }
+              >
+                Select All
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAssignSelected([])}
+              >
+                Clear All
+              </Button>
+            </div>
+
+            <div className="max-h-60 overflow-auto border rounded p-2 space-y-2">
+              {filteredBatches.map((b) => (
+                <label key={b._id} className="flex gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={assignSelected.includes(b._id)}
+                    onChange={(e) =>
+                      setAssignSelected((prev) =>
+                        e.target.checked
+                          ? [...prev, b._id]
+                          : prev.filter((id) => id !== b._id)
+                      )
+                    }
+                  />
+                  {b.name}
+                </label>
+              ))}
+            </div>
+
+            <div className="text-xs text-muted-foreground">
+              Selected batches: {assignSelected.length}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssigningTest(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={assignLoading || assignSelected.length === 0}
+              onClick={handleAssignToBatch}
+            >
+              {assignLoading ? "Assigning..." : "Assign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
+
+
+
+
+      <Dialog
+        open={!!removeBatchTest}
+        onOpenChange={() => {
+          setRemoveBatchTest(null);
+          setRemoveSelected([]);
+          setRemoveSearch("");
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Remove Batches ({removeBatchTest?.title})
+            </DialogTitle>
+          </DialogHeader>
+
+          <Input
+            placeholder="Search assigned batches..."
+            value={removeSearch}
+            onChange={(e) => setRemoveSearch(e.target.value)}
+          />
+
+          <div className="flex gap-2 mt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setRemoveSelected(filteredRemoveBatches.map((b) => b._id))
+              }
+            >
+              Select All
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setRemoveSelected([])}
+            >
+              Clear All
+            </Button>
+          </div>
+
+          <div className="mt-3 max-h-60 overflow-auto border rounded p-2 space-y-2">
+            {filteredRemoveBatches.map((b) => (
+              <label key={b._id} className="flex gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={removeSelected.includes(b._id)}
+                  onChange={(e) =>
+                    setRemoveSelected((prev) =>
+                      e.target.checked
+                        ? [...prev, b._id]
+                        : prev.filter((id) => id !== b._id)
+                    )
+                  }
+                />
+                {b.name}
+              </label>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveBatchTest(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={removeLoading || removeSelected.length === 0}
+              onClick={async () => {
+                setRemoveLoading(true);
+                await api.apiPut(
+                  `/teacher/tests/${removeBatchTest!._id}`,
+                  {
+                    assignedBatches: assignedBatchIds.filter(
+                      (id) => !removeSelected.includes(id)
+                    ),
+                  }
+                );
+                await fetchTests();
+                setRemoveLoading(false);
+                setRemoveBatchTest(null);
+              }}
+            >
+              Remove Selected
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
+
 
       {/* QUESTIONS DIALOG */}
       <Dialog open={!!viewingTest} onOpenChange={() => setViewingTest(null)}>
@@ -954,8 +1254,8 @@ export function ViewTestForm() {
                   <div className="text-sm text-muted-foreground">
                     {viewingTest.createdAt
                       ? new Date(
-                          viewingTest.createdAt
-                        ).toLocaleString()
+                        viewingTest.createdAt
+                      ).toLocaleString()
                       : null}
                   </div>
                 </div>
@@ -1187,7 +1487,7 @@ export function ViewTestForm() {
                     Assigned batches
                   </div>
                   {viewingTest.assignedBatches &&
-                  viewingTest.assignedBatches.length > 0 ? (
+                    viewingTest.assignedBatches.length > 0 ? (
                     <div className="flex gap-2 flex-wrap">
                       {viewingTest.assignedBatches.map((bid) => {
                         const b = batches.find((x) => x._id === bid);
