@@ -23,10 +23,8 @@ const VIOLATION_TYPES = {
   'refresh': { severity: 'medium', action: 'warning', description: 'Page refresh attempted' },
   'print': { severity: 'medium', action: 'warning', description: 'Print attempted' },
   'save': { severity: 'medium', action: 'warning', description: 'Save operation attempted' },
-  'window_blur': { severity: 'critical', action: 'terminate', description: 'Window lost focus' },
   'fullscreen_exit': { severity: 'high', action: 'terminate', description: 'Fullscreen mode exited' },
   'multiple_monitors': { severity: 'high', action: 'terminate', description: 'Multiple monitors detected' },
-  'mouse_leave_top': { severity: 'medium', action: 'warning', description: 'Mouse left window area' },
   'dev_tools_open': { severity: 'high', action: 'terminate', description: 'Developer tools detected' },
   'network_disconnect': { severity: 'high', action: 'flag', description: 'Network connection lost' },
   'auto_submit': { severity: 'critical', action: 'terminate', description: 'Exam auto-submitted' }
@@ -219,7 +217,6 @@ router.post('/exam/start', rateLimit, protect, examSecurity, networkSecurity, br
       screenSecurity: {
         fullscreenExits: 0,
         tabSwitches: 0,
-        windowBlurs: 0,
         multipleMonitorsDetected: false,
         violations: []
       },
@@ -457,8 +454,7 @@ router.get('/status/:attemptId', protect, async (req, res) => {
       },
       screenViolations: {
         fullscreenExits: examSecurity.screenSecurity.fullscreenExits,
-        tabSwitches: examSecurity.screenSecurity.tabSwitches,
-        windowBlurs: examSecurity.screenSecurity.windowBlurs
+        tabSwitches: examSecurity.screenSecurity.tabSwitches
       },
       postExamSecurity: examSecurity.postExamSecurity || {
         submissionLocked: false,
@@ -662,27 +658,11 @@ router.post('/violation', rateLimit, protect, async (req, res) => {
     const criticalViolations = examSecurity.violations.filter(v => v.severity === 'critical').length;
     const highViolations = examSecurity.violations.filter(v => v.severity === 'high').length;
     
-    // Made less strict: require 2 critical OR 3 high violations before termination
-    const shouldTerminate = 
-      criticalViolations >= 2 || 
-      examSecurity.securityScore < 30 || 
-      highViolations >= 3;
-
-    let terminated = false;
-    if (shouldTerminate) {
-      try {
-        examSecurity.securityStatus = 'terminated';
-        await examSecurity.save();
-        
-        testAttempt.status = 'terminated';
-        testAttempt.endTime = new Date();
-        await testAttempt.save();
-        
-        await examTimerService.autoSubmitExam(testAttemptId, 'security_violation');
-        terminated = true;
-      } catch (submitError) {
-        console.error('Auto-submit failed:', submitError);
-      }
+    // Log violations but do not auto-terminate
+    // Faculty can review violations and take action if needed
+    if (examSecurity.securityScore < 30) {
+      examSecurity.securityStatus = 'violated';
+      await examSecurity.save();
     }
 
     res.json({
@@ -692,11 +672,12 @@ router.post('/violation', rateLimit, protect, async (req, res) => {
       severity: violationConfig.severity,
       action: violationConfig.action,
       securityScore: examSecurity.securityScore,
-      shouldTerminate: terminated,
-      remainingViolations: terminated ? 0 : Math.max(0, 5 - highViolations),
-      message: terminated 
-        ? 'Exam terminated due to security violations'
-        : violationConfig.description
+      shouldTerminate: false,
+      remainingViolations: Math.max(0, 5 - highViolations),
+      message: violationConfig.description,
+      warning: criticalViolations >= 2 || examSecurity.securityScore < 50 
+        ? 'Multiple violations detected. This will be reviewed by faculty.'
+        : null
     });
   } catch (error) {
     console.error('Violation logging error:', error);

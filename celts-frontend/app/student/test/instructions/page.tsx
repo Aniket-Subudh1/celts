@@ -65,11 +65,11 @@ function TestInstructionsContent() {
   ];
 
   const consequences = [
-    "Tab switching or window blur → Immediate auto-submission",
-    "Multiple monitors detected → Warning popup and possible auto-submission",
-    "3 minor violations → Automatic test submission",
-    "All violations are logged and reviewed by faculty",
-    "Attempting to cheat may result in test disqualification"
+    "Tab switching → Critical violation warning and logged",
+    "Multiple monitors detected → Warning popup and logged",
+    "Multiple violations → All logged for faculty review",
+    "All violations are monitored and reviewed by faculty",
+    "Excessive violations may result in test disqualification upon review"
   ];
 
   return (

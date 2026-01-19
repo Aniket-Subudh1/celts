@@ -24,7 +24,7 @@ export function useScreenMonitoring(options: UseScreenMonitoringOptions = {}) {
     onAutoSubmit,
     enabled = true,
     autoSubmitOnViolation = true,
-    warningsBeforeAutoSubmit = 2,
+    warningsBeforeAutoSubmit = 10,
   } = options;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -60,28 +60,24 @@ export function useScreenMonitoring(options: UseScreenMonitoringOptions = {}) {
     const remainingWarnings = Math.max(0, currentWarning.maxWarnings - currentWarning.count);
 
     if (currentWarning.count >= currentWarning.maxWarnings) {
-      // Final warning - this will trigger auto-submit
+      // Maximum warnings reached - notify but don't auto-submit
       setCurrentViolationType(violationType);
       setShowWarningDialog(true);
       
-      toast.error('🚨 FINAL WARNING', {
-        description: `${message}. Your exam will be auto-submitted in 10 seconds unless you return to the exam.`,
+      toast.error('🚨 MAXIMUM WARNINGS REACHED', {
+        description: `${message}. You have reached the maximum warnings. All violations are being logged for faculty review.`,
         duration: 10000,
       });
 
-      // Auto-dismiss warning and trigger critical violation after 10 seconds
+      // Log as critical violation but don't trigger auto-submit
       warningTimeoutRef.current = setTimeout(() => {
         setShowWarningDialog(false);
-        if (!hasAutoSubmittedRef.current) {
-          hasAutoSubmittedRef.current = true;
-          onCriticalViolation?.(violationType, `Final warning exceeded: ${message}`);
-          onAutoSubmit?.();
-        }
+        onCriticalViolation?.(violationType, `Maximum warnings exceeded: ${message}`);
       }, 10000);
     } else {
       // Regular warning
       toast.warning('⚠️ Security Warning', {
-        description: `${message}. ${remainingWarnings} more violations before exam termination.`,
+        description: `${message}. ${remainingWarnings} more warnings before maximum limit. Violations are being logged.`,
         duration: 6000,
       });
       
@@ -155,21 +151,9 @@ export function useScreenMonitoring(options: UseScreenMonitoringOptions = {}) {
     };
   }, [enabled, isFullscreen, showViolationWarning]);
 
-  // Window focus monitoring
+  // Tab switch monitoring via visibility change
   useEffect(() => {
     if (!enabled) return;
-
-    const handleWindowFocus = () => {
-      setIsWindowFocused(true);
-    };
-
-    const handleWindowBlur = () => {
-      setIsWindowFocused(false);
-      showViolationWarning(
-        'window_blur',
-        'You switched away from the exam window'
-      );
-    };
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -183,13 +167,9 @@ export function useScreenMonitoring(options: UseScreenMonitoringOptions = {}) {
       }
     };
 
-    window.addEventListener('focus', handleWindowFocus);
-    window.addEventListener('blur', handleWindowBlur);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.removeEventListener('focus', handleWindowFocus);
-      window.removeEventListener('blur', handleWindowBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [enabled, showViolationWarning]);
@@ -288,24 +268,6 @@ export function useScreenMonitoring(options: UseScreenMonitoringOptions = {}) {
     const interval = setInterval(detectDevtools, 1000);
 
     return () => clearInterval(interval);
-  }, [enabled, showViolationWarning]);
-
-  // Mouse leave detection (cursor moving out of window)
-  useEffect(() => {
-    if (!enabled) return;
-
-    const handleMouseLeave = () => {
-      showViolationWarning(
-        'mouse_leave',
-        'Mouse cursor left the exam window area'
-      );
-    };
-
-    document.addEventListener('mouseleave', handleMouseLeave);
-
-    return () => {
-      document.removeEventListener('mouseleave', handleMouseLeave);
-    };
   }, [enabled, showViolationWarning]);
 
   // Zoom level detection

@@ -37,11 +37,6 @@ const VIOLATION_MESSAGES: Record<string, { title: string; description: string; s
     description: 'You switched to a different browser tab. Please return to the exam immediately.',
     severity: 'critical'
   },
-  window_blur: {
-    title: 'Window Focus Lost',
-    description: 'You switched away from the exam window. Please return focus to the exam.',
-    severity: 'critical'
-  },
   fullscreen_exit: {
     title: 'Fullscreen Mode Exited',
     description: 'You exited fullscreen mode. Please return to fullscreen to continue the exam.',

@@ -20,7 +20,7 @@ export function useInputRestrictions(options: UseInputRestrictionsOptions = {}) 
     onViolation,
     onCriticalViolation,
     enabled = true,
-    warningsBeforeAutoSubmit = 6,
+    warningsBeforeAutoSubmit = 10,
   } = options;
 
   const [showWarningDialog, setShowWarningDialog] = useState(false);
@@ -52,24 +52,24 @@ export function useInputRestrictions(options: UseInputRestrictionsOptions = {}) 
     const remainingWarnings = Math.max(0, currentWarning.maxWarnings - currentWarning.count);
 
     if (currentWarning.count >= currentWarning.maxWarnings) {
-      // Final warning - this will trigger auto-submit
+      // Maximum warnings reached
       setCurrentViolationType(violationType);
       setShowWarningDialog(true);
       
-      toast.error('🚨 FINAL WARNING', {
-        description: `${message}. Your exam will be auto-submitted if you continue this behavior.`,
+      toast.error('🚨 MAXIMUM WARNINGS REACHED', {
+        description: `${message}. You have reached the maximum warnings. All violations are logged for faculty review.`,
         duration: 8000,
       });
 
-      // Auto-dismiss warning and trigger critical violation after 10 seconds
+      // Log as critical but don't auto-submit
       warningTimeoutRef.current = setTimeout(() => {
         setShowWarningDialog(false);
-        onCriticalViolation?.(violationType, `Final warning exceeded: ${message}`);
+        onCriticalViolation?.(violationType, `Maximum warnings exceeded: ${message}`);
       }, 10000);
     } else {
       // Regular warning
       toast.warning('⚠️ Security Warning', {
-        description: `${message}. ${remainingWarnings} more warnings before exam termination.`,
+        description: `${message}. ${remainingWarnings} more warnings before maximum limit.`,
         duration: 5000,
       });
       

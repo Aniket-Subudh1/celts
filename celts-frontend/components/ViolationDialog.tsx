@@ -75,29 +75,6 @@ export function ViolationDialog({ type, onClose }: ViolationDialogProps) {
           actionText: "OK",
         };
 
-      case "window_blur":
-        return {
-          icon: <AlertTriangle className="w-12 h-12 text-red-500" />,
-          title: "Window Focus Lost",
-          description: (
-            <div className="space-y-3">
-              <div className="text-red-600 font-semibold text-lg">
-                CRITICAL VIOLATION DETECTED
-              </div>
-              <div>You left the test window or switched applications.</div>
-              <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                <div className="font-semibold text-red-700">
-                  This is a critical violation.
-                </div>
-                <div className="text-sm mt-2">
-                  Your test is being automatically submitted now.
-                </div>
-              </div>
-            </div>
-          ),
-          actionText: "OK",
-        };
-
       case "clipboard_critical":
         return {
           icon: <Keyboard className="w-12 h-12 text-red-500" />,

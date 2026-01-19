@@ -435,7 +435,7 @@ function TestRunnerContent() {
 
     console.warn(`Security violation: ${violationType} - ${details}`);
 
-    const criticalViolations = ["multiple_monitors", "tab_switch", "window_blur", "fullscreen_exit"];
+    const criticalViolations = ["multiple_monitors", "tab_switch", "fullscreen_exit"];
     if (criticalViolations.includes(violationType)) {
       setIsTestCompromised(true);
       setViolationMessage(`Critical violation: ${details}`);
