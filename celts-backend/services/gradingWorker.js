@@ -1,6 +1,3 @@
-// services/gradingWorker.js
-// Full updated grading worker: writing (with images from S3) + speaking (audio + video) + student stats
-
 const OpenAI = require("openai");
 const fs = require("fs");
 
@@ -11,8 +8,6 @@ const Batch = require("../models/Batch");
 const StudentStats = require("../models/StudentStats");
 
 const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// Utilities 
 
 function roundHalf(v) {
   return Math.round(v * 2) / 2;
@@ -36,7 +31,6 @@ function fileExistsSync(p) {
   }
 }
 
-// StudentStats helper
 async function updateStudentStats({ student, skill, bandScore, examinerSummary }) {
   const batch = await Batch.findOne({ students: student._id }).lean();
   let stats = await StudentStats.findOne({ student: student._id });
@@ -79,7 +73,6 @@ async function updateStudentStats({ student, skill, bandScore, examinerSummary }
   await stats.save();
 }
 
-// Transcription 
 
 async function getTranscription({ mediaPath }) {
   if (!mediaPath || !fileExistsSync(mediaPath)) {
@@ -99,7 +92,6 @@ async function getTranscription({ mediaPath }) {
   return resp.text.trim();
 }
 
-// Writing Evaluation 
 
 async function gradeWriting({ answerText, questionText, imageUrls = [] }) {
   let prompt = `
@@ -192,7 +184,7 @@ The "examiner_summary" MUST be an in-depth evaluation that:
   return parsed;
 }
 
-// Speaking Evaluation 
+
 
 async function gradeSpeaking({ questions = [], mediaPath }) {
   if (!Array.isArray(questions) || !questions.length) {
@@ -232,7 +224,6 @@ async function gradeSpeaking({ questions = [], mediaPath }) {
       continue;
     }
 
-    // Transcribe per-question
     const transcription = await getTranscription({ mediaPath: audio });
 
     allTranscriptions.push(
@@ -311,7 +302,6 @@ The "examiner_summary" MUST be an in-depth evaluation that:
     bandScores.push(parsed.band_score);
   }
 
-  // IELTS-style averaging
   const overallBand =
     bandScores.length > 0
       ? roundHalf(bandScores.reduce((a, b) => a + b, 0) / bandScores.length)
@@ -341,8 +331,6 @@ The "examiner_summary" MUST be an in-depth evaluation that:
 
 
 
-
-// Penalties 
 function applyStrictSpeakingPenalties(evaluation, totalQuestions) {
   let band = evaluation.band_score ?? 0;
 
@@ -362,7 +350,6 @@ function applyStrictSpeakingPenalties(evaluation, totalQuestions) {
   return evaluation;
 }
 
-// Detailed Summaries 
 
 function buildDetailedWritingSummary(perTasks, overallBand) {
   const lines = [];
@@ -418,13 +405,19 @@ function buildDetailedSpeakingSummary(evaluation, totalQuestions) {
   return lines.join("\n");
 }
 
-// Queue Processor 
 
-submissionQueue.process(async (job) => {
-  const { submissionId, testId, skill, response, mediaPaths } = job.data;
+async function gradeSubmission(jobData) {
+  const { submissionId, testId, skill, response, mediaPaths } = jobData;
 
   const submission = await Submission.findById(submissionId).populate("student");
+  if (!submission) {
+    throw new Error(`Submission ${submissionId} not found`);
+  }
+  
   const testSet = await TestSet.findById(testId);
+  if (!testSet) {
+    throw new Error(`TestSet ${testId} not found`);
+  }
 
   let finalBand = null;
   let totalMarks = 0;
@@ -507,7 +500,30 @@ submissionQueue.process(async (job) => {
     });
   }
 
-  console.log(`[Worker] has graded the ${skill.toUpperCase()} test with Band: ${finalBand}`);
+  console.log(`[Worker] Graded ${skill.toUpperCase()} test for submission ${submissionId} with Band: ${finalBand}`);
+  return { submissionId, skill, finalBand };
+}
+
+
+const CONCURRENCY_LIMIT = 5; 
+
+submissionQueue.process(CONCURRENCY_LIMIT, async (job) => {
+  try {
+    const startTime = Date.now();
+    console.log(`[Worker] Starting job ${job.id} for submission ${job.data.submissionId}`);
+    
+    const result = await gradeSubmission(job.data);
+    
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`[Worker] Completed job ${job.id} in ${duration}s`);
+    
+    return result;
+  } catch (error) {
+    console.error(`[Worker] Job ${job.id} failed:`, error.message);
+    throw error; 
+  }
 });
 
-console.log("CELTS Grading Worker started and listening for queue jobs...");
+console.log(`CELTS Grading Worker started with concurrency limit: ${CONCURRENCY_LIMIT}`);
+
+module.exports = { gradeSubmission };

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { navItems } from '@/components/admin/NavItems';
-import { CreateAdminTest } from '@/components/admin/createAdminTest';
+import { CreateAdminTest } from '@/components/admin/CreateAdminTest';
 export default async function CreateAdminTestPage() {
   return (
     <DashboardLayout navItems={navItems} sidebarHeader="CELTS Admin">
