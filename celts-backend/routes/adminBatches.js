@@ -70,6 +70,10 @@ router.put('/:id', protect, restrictTo(['admin']), async (req, res) => {
     const { id } = req.params;
     const { name, program, year, section } = req.body;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid batch id' });
+    }
+
     const updated = await Batch.findByIdAndUpdate(
       id,
       { name, program, year, section },
@@ -91,6 +95,11 @@ router.put('/:id', protect, restrictTo(['admin']), async (req, res) => {
 router.delete('/:id', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid batch id' });
+    }
+    
     const deleted = await Batch.findByIdAndDelete(id);
     if (!deleted) return res.status(404).json({ message: 'Batch not found' });
     res.json({ message: 'Batch deleted successfully' });
@@ -104,6 +113,10 @@ router.delete('/:id', protect, restrictTo(['admin']), async (req, res) => {
 router.post('/:batchId/assign-faculty/:facultyId', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { batchId, facultyId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(batchId) || !mongoose.Types.ObjectId.isValid(facultyId)) {
+      return res.status(400).json({ message: 'Invalid batch or faculty id' });
+    }
 
     const faculty = await User.findById(facultyId);
     if (!faculty) return res.status(404).json({ message: 'Faculty not found' });
@@ -224,6 +237,10 @@ router.delete('/:batchId/unassign-student/:studentId', protect, restrictTo(['adm
   try {
     const { batchId, studentId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(batchId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({ message: 'Invalid batch or student id' });
+    }
+
     const batch = await Batch.findById(batchId);
     if (!batch) return res.status(404).json({ message: 'Batch not found' });
 
@@ -251,6 +268,10 @@ router.delete('/:batchId/unassign-student/:studentId', protect, restrictTo(['adm
 router.get('/:id', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid batch id' });
+    }
 
     const batch = await Batch.findById(id)
       .populate({ path: 'faculty', select: '_id name email systemId' })
@@ -291,9 +312,7 @@ router.get('/:id', protect, restrictTo(['admin']), async (req, res) => {
         page: studentsResult.page,
         limit: studentsResult.limit,
         total: studentsResult.total,
-        totalPages: studentsResult.totalPages,
         hasNext: studentsResult.hasNext,
-        hasPrev: studentsResult.hasPrev,
       },
     });
   } catch (err) {

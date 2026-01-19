@@ -190,14 +190,12 @@ export function ViewTest() {
         setLoading(false);
         return;
       }
-      const raw =
-        Array.isArray(res.data)
+      // Backend returns paginated format: { data: [...], page, limit, total, hasNext }
+      const raw = Array.isArray(res.data?.data)
+        ? res.data.data
+        : Array.isArray(res.data)
           ? res.data
-          : Array.isArray(res.data?.tests)
-            ? res.data.tests
-            : Array.isArray(res.data?.data)
-              ? res.data.data
-              : [];
+          : [];
 
       setTests(raw);
 

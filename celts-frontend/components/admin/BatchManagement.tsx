@@ -117,7 +117,7 @@ export function BatchManagement() {
           s.name.toLowerCase().includes(q) ||
           s.systemId?.toLowerCase().includes(q)
       )
-      .slice(0, 20); // limit results for UX
+      .slice(0, 20); 
   }, [studentAssignSearch, studentOptions]);
 
   const handleSelectAllVisible = () => {
