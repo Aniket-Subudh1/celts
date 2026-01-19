@@ -23,19 +23,25 @@ const allowedMimes = new Set([
   "audio/wav",
   "audio/x-wav",
   "audio/x-m4a",
+  "audio/m4a",
   "audio/mp4",
   "audio/aac",
   "audio/ogg",
   "audio/webm",
+  "audio/flac",
+  "audio/x-flac",
   "video/mp4",
   "video/webm",
   "video/ogg",
   "video/quicktime", 
   "video/x-matroska",
+  "video/x-msvideo",
   "image/jpeg",
+  "image/jpg",
   "image/png",
   "image/webp",
-  "image/gif"  
+  "image/gif",
+  "application/octet-stream" // For files without proper MIME type
 ]);
 
 // Multer storage factory 
@@ -44,11 +50,25 @@ function createUploader(destinationFolder) {
     storage: multer.memoryStorage(), 
     limits: { fileSize: 100 * 1024 * 1024 }, 
     fileFilter: (req, file, cb) => {
+      console.log(`File upload attempt - Name: ${file.originalname}, MIME: ${file.mimetype}`);
+      
+      // Check if MIME type is in allowed list
       if (!allowedMimes.has(file.mimetype)) {
-        const err = new Error("Invalid file type. Audio, Video and Image only.");
-        err.code = "INVALID_FILE_TYPE";
-        return cb(err);
+        // Also check if it starts with audio/, video/, or image/ (more flexible)
+        const isMedia = file.mimetype.startsWith('audio/') || 
+                       file.mimetype.startsWith('video/') || 
+                       file.mimetype.startsWith('image/');
+        
+        if (!isMedia) {
+          const err = new Error(`Invalid file type: ${file.mimetype}. Audio, Video and Image only.`);
+          err.code = "INVALID_FILE_TYPE";
+          console.error(`File rejected - Name: ${file.originalname}, MIME: ${file.mimetype}`);
+          return cb(err);
+        }
+        
+        console.warn(`File accepted with unlisted MIME type: ${file.mimetype}`);
       }
+      
       cb(null, true);
     },
   });
