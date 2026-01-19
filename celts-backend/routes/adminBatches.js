@@ -6,9 +6,34 @@ const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
 const { paginate } = require("../utils/pagination");
 
-// GET /api/admin/batches
 router.get('/', protect, restrictTo(['admin']), async (req, res) => {
   try {
+    if (req.query.all === 'true') {
+      const batches = await Batch.find({})
+        .populate({ path: "faculty", select: "name email systemId" })
+        .populate({ path: "students", select: "name email systemId" })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const mapped = batches.map(b => ({
+        _id: b._id,
+        name: b.name,
+        program: b.program,
+        year: b.year,
+        section: b.section,
+        createdAt: b.createdAt,
+        faculty: Array.isArray(b.faculty)
+          ? b.faculty.map(f => f?.name || f?.email || String(f?._id))
+          : [],
+        students: Array.isArray(b.students)
+          ? b.students.map(s => s?.name || s?.email || String(s?._id))
+          : []
+      }));
+
+      return res.json({ data: mapped, total: mapped.length });
+    }
+
+    // Default: paginated response
     const result = await paginate(req, Batch, {
       populate: [
         { path: "faculty", select: "name email systemId" },
@@ -38,7 +63,6 @@ router.get('/', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-// POST /api/admin/batches
 router.post('/', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { name, program, year, section } = req.body;
@@ -64,7 +88,6 @@ router.post('/', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-//  PUT /api/admin/batches/:id    (Update batch details)   
 router.put('/:id', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
@@ -91,7 +114,6 @@ router.put('/:id', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-// DELETE /api/admin/batches/:id
 router.delete('/:id', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
@@ -109,7 +131,6 @@ router.delete('/:id', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-// POST /api/admin/batches/:batchId/assign-faculty/:facultyId  (Assign or replace faculty for a batch (only one allowed))
 router.post('/:batchId/assign-faculty/:facultyId', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { batchId, facultyId } = req.params;

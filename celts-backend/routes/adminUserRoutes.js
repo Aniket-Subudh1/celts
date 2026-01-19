@@ -216,6 +216,17 @@ router.get('/', protect, restrictTo(['admin']), async (req, res) => {
     const filter = {};
     if (role) filter.role = role;
     
+    // If 'all=true' query param is provided, return all users without pagination
+    if (req.query.all === 'true') {
+      const users = await User.find(filter)
+        .select('-password')
+        .sort({ createdAt: -1 })
+        .lean();
+      
+      return res.json({ data: users, total: users.length });
+    }
+
+    // Default: paginated response
     const result = await paginate(req, User, {
       filter,
       select: '-password',
