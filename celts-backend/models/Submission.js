@@ -37,9 +37,18 @@ const SubmissionSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ['pending', 'graded', 'failed'],
+    enum: ['pending', 'queued', 'graded', 'failed'],
     default: 'pending',
   },
+  
+  // Queue tracking fields for 2K-3K concurrent users
+  queuedAt: { type: Date, default: null },
+  processingErrors: [{
+    timestamp: Date,
+    error: String,
+    jobId: String,
+    attemptsMade: Number,
+  }],
 
   totalMarks: { type: Number, default: 0 },
   maxMarks: { type: Number, default: 0 },

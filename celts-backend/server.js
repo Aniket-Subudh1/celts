@@ -9,6 +9,7 @@ const connectDB = require('./config/mongoDB');
 const logger = require('./config/logger');
 const apiRoutes = require('./routes/index');
 const examTimerService = require('./services/examTimerService'); 
+const { closeQueue } = require('./services/queue'); 
 
 const ai= new GoogleGenAI({});
 
@@ -30,7 +31,6 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (e.g., mobile apps, curl)
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.includes(origin)) {
@@ -41,10 +41,6 @@ app.use(cors({
   },
   credentials: true
 }));
-
-
-
-// General API rate limiter - 500 requests per minute per IP
 
 
 console.log(`Starting CELTS Backend on port ${PORT}...`);
@@ -76,8 +72,14 @@ process.on('SIGINT', gracefulShutdown);
 function gracefulShutdown(signal) {
   console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
   
-  server.close(() => {
+  server.close(async () => {
     console.log('HTTP server closed.');
+    
+    try {
+      await closeQueue();
+    } catch (err) {
+      console.error('Error closing queue:', err.message);
+    }
     
     if (examTimerService && typeof examTimerService.shutdown === 'function') {
       examTimerService.shutdown();
@@ -89,5 +91,5 @@ function gracefulShutdown(signal) {
   setTimeout(() => {
     console.error('Could not close connections in time, forcefully shutting down');
     process.exit(1);
-  }, 10000);
+  }, 30000); 
 }

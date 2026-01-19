@@ -1,14 +1,3 @@
-// utils/s3Utils.js
-
-/**
- * Utility functions for S3 integration
- */
-
-/**
- * Check if a given URL is an S3 URL
- * @param {string} url - The URL to check
- * @returns {boolean} - True if it's an S3 URL
- */
 function isS3Url(url) {
   if (!url || typeof url !== 'string') return false;
   
@@ -19,11 +8,7 @@ function isS3Url(url) {
   );
 }
 
-/**
- * Extract bucket name from S3 URL
- * @param {string} s3Url - The S3 URL
- * @returns {string|null} - Bucket name or null if not a valid S3 URL
- */
+
 function extractBucketName(s3Url) {
   if (!isS3Url(s3Url)) return null;
   
@@ -48,11 +33,6 @@ function extractBucketName(s3Url) {
   }
 }
 
-/**
- * Extract S3 key from S3 URL
- * @param {string} s3Url - The S3 URL
- * @returns {string|null} - S3 key or null if not a valid S3 URL
- */
 function extractS3Key(s3Url) {
   if (!isS3Url(s3Url)) return null;
   
@@ -77,11 +57,7 @@ function extractS3Key(s3Url) {
   }
 }
 
-/**
- * Generate a display name for storage provider
- * @param {string} url - The file URL
- * @returns {string} - Human-readable storage provider name
- */
+
 function getStorageProvider(url) {
   if (isS3Url(url)) {
     return 'Amazon S3 (Cloud)';
