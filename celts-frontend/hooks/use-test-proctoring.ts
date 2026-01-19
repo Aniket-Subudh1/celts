@@ -48,13 +48,13 @@ export function useTestProctoring(options: UseTestProctoringOptions = {}) {
     onAutoSubmit,
     onViolation,
     onCriticalViolation,
-    maxViolationsBeforeSubmit = 3,
+    maxViolationsBeforeSubmit = 10,
     sessionToken,
     attemptId,
     enableDeviceRestrictions = true,
     enableNetworkMonitoring = true,
     isSubmissionInProgress = false,
-    warningsBeforeAutoSubmit = 2,
+    warningsBeforeAutoSubmit = 10,
   } = options;
 
   const [criticalViolationType, setCriticalViolationType] = useState<string | null>(null);
@@ -200,31 +200,30 @@ export function useTestProctoring(options: UseTestProctoringOptions = {}) {
       return;
     }
 
-    const immediateTerminationTypes = ['tab_switch', 'window_blur', 'fullscreen_exit', 'multiple_monitors'];
+    const criticalViolationTypes = ['tab_switch', 'fullscreen_exit', 'multiple_monitors'];
     
-    if (immediateTerminationTypes.includes(type)) {
+    if (criticalViolationTypes.includes(type)) {
       setCriticalViolationType(type);
-      
-      if (autoSubmitOnViolation && !hasAutoSubmittedRef.current) {
-        hasAutoSubmittedRef.current = true;
-        setTimeout(() => onAutoSubmit?.(), 500);
-      }
+      // Show critical violation warning but don't auto-submit
+      toast.error('🚨 Critical Violation Detected', {
+        description: `${details}. This violation has been logged and will be reviewed.`,
+        duration: 8000,
+      });
     }
 
-    if (
-      autoSubmitOnViolation &&
-      !hasAutoSubmittedRef.current &&
-      violationsRef.current.length >= maxViolationsBeforeSubmit
-    ) {
-      hasAutoSubmittedRef.current = true;
-      onAutoSubmit?.();
+    // Warning for multiple violations
+    if (violationsRef.current.length >= maxViolationsBeforeSubmit) {
+      toast.error('⚠️ Multiple Violations Detected', {
+        description: `${violationsRef.current.length} violations logged. Your exam activity is being monitored.`,
+        duration: 8000,
+      });
     }
   }, [logViolation, autoSubmitOnViolation, maxViolationsBeforeSubmit, onAutoSubmit, onViolation, isSubmissionInProgress]);
 
   const handleCriticalViolation = useCallback((type: string, details: string) => {
     console.log('Critical proctoring violation:', type, details);
     
-    if (hasAutoSubmittedRef.current || isSubmissionInProgress) {
+    if (isSubmissionInProgress) {
       return;
     }
 
@@ -240,11 +239,12 @@ export function useTestProctoring(options: UseTestProctoringOptions = {}) {
     
     setCriticalViolationType(type);
     
-    if (!hasAutoSubmittedRef.current) {
-      hasAutoSubmittedRef.current = true;
-      setTimeout(() => onAutoSubmit?.(), 500);
-    }
-  }, [logViolation, onCriticalViolation, onAutoSubmit, isSubmissionInProgress]);
+    // Show critical warning but don't auto-submit
+    toast.error('🚨 Critical Security Violation', {
+      description: `${details}. This has been logged and will be reviewed by faculty.`,
+      duration: 10000,
+    });
+  }, [logViolation, onCriticalViolation, isSubmissionInProgress]);
 
   const handleAutoSubmit = useCallback(async () => {
     if (!hasAutoSubmittedRef.current) {

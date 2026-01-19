@@ -129,7 +129,6 @@ const ExamSecuritySchema = new mongoose.Schema({
   screenSecurity: {
     fullscreenExits: Number,
     tabSwitches: Number,
-    windowBlurs: Number,
     multipleMonitorsDetected: Boolean,
     screenRecording: {
       enabled: Boolean,

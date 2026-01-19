@@ -68,8 +68,6 @@ export function ProctorLogsViewer({ testId }: ProctorLogsViewerProps) {
     switch (type) {
       case "tab_switch":
         return <Eye className="w-5 h-5 text-red-500" />;
-      case "window_blur":
-        return <AlertTriangle className="w-5 h-5 text-red-500" />;
       case "multiple_monitors":
         return <Monitor className="w-5 h-5 text-orange-500" />;
       case "fullscreen_exit":
@@ -77,8 +75,6 @@ export function ProctorLogsViewer({ testId }: ProctorLogsViewerProps) {
       case "clipboard":
       case "context_menu":
         return <Keyboard className="w-5 h-5 text-yellow-500" />;
-      case "mouse_leave_top":
-        return <MousePointer className="w-5 h-5 text-yellow-500" />;
       case "dev_tools":
       case "dev_tools_open":
         return <AlertTriangle className="w-5 h-5 text-orange-500" />;
@@ -88,7 +84,7 @@ export function ProctorLogsViewer({ testId }: ProctorLogsViewerProps) {
   };
 
   const getSeverityBadge = (type: string) => {
-    if (["tab_switch", "window_blur"].includes(type)) {
+    if (["tab_switch"].includes(type)) {
       return <Badge variant="destructive">Critical</Badge>;
     }
     if (["multiple_monitors", "dev_tools", "fullscreen_exit"].includes(type)) {
@@ -100,14 +96,12 @@ export function ProctorLogsViewer({ testId }: ProctorLogsViewerProps) {
   const getViolationLabel = (type: string) => {
     const labels: Record<string, string> = {
       tab_switch: "Tab Switch",
-      window_blur: "Window Focus Lost",
       multiple_monitors: "Multiple Monitors",
       fullscreen_exit: "Fullscreen Exit",
       clipboard: "Clipboard Action",
       context_menu: "Right-Click Attempt",
       dev_tools: "Dev Tools Access",
       dev_tools_open: "Dev Tools Detected",
-      mouse_leave_top: "Mouse Left Window",
       new_tab: "New Tab Attempt",
       new_window: "New Window Attempt",
       refresh: "Refresh Attempt",
@@ -159,7 +153,7 @@ export function ProctorLogsViewer({ testId }: ProctorLogsViewerProps) {
         <Card className="p-4">
           <div className="text-sm text-slate-600">Critical Violations</div>
           <div className="text-2xl font-bold text-red-600">
-            {(violationSummary.tab_switch || 0) + (violationSummary.window_blur || 0)}
+            {(violationSummary.tab_switch || 0)}
           </div>
         </Card>
         <Card className="p-4">

@@ -1,11 +1,19 @@
-// routes/auth.js
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
+const rateLimit = require('express-rate-limit');
 
 const genToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,  
+  max: 500,             
+  message: { message: 'Too many login attempts from this IP, please try again in a minute' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 router.post('/register', [
   body('name').notEmpty(),
@@ -24,7 +32,7 @@ router.post('/register', [
   }
 });
 
-router.post('/login', [
+router.post('/login', loginLimiter, [
   body('email').isEmail(),
   body('password').notEmpty()
 ], async (req, res) => {
