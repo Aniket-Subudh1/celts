@@ -107,36 +107,17 @@ router.post(
             provider: "S3",
           });
         } catch (s3Error) {
-          console.error(
-            "S3 upload failed, falling back to local storage:",
-            s3Error
-          );
+          console.error("S3 upload failed:", s3Error);
+          return res.status(500).json({ 
+            message: "S3 upload failed. Please check S3 configuration.",
+            error: s3Error.message 
+          });
         }
       }
 
-      // LOCAL STORAGE FALLBACK
-      // const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-
-      // // Use original extension if present; otherwise choose sensible default
-      // let ext = path.extname(req.file.originalname);
-      // if (!ext) {
-      //   ext = isImage ? ".jpg" : ".mp3";
-      // }
-
-      // const filename = `${unique}${ext}`;
-
-      // You currently only have ../uploads/files in this file.
-      // To keep changes minimal, still store images under that path.
-      // const filepath = path.join(adminUploadDir, filename);
-
-      // fs.writeFileSync(filepath, req.file.buffer);
-
-      // const fileUrl = `${req.protocol}://${req.get("host")}/uploads//${filename}`;
-
-      return res.json({
-        message: `${isImage ? "Image" : "Audio"} uploaded successfully`,
-        url: fileUrl,
-        provider: "local",
+     
+      return res.status(500).json({ 
+        message: "S3 storage is not configured properly" 
       });
     } catch (err) {
       console.error("Admin upload error:", err);
@@ -148,46 +129,34 @@ router.post(
 );
 
 
-
-
-// Student upload (audio/video)
 router.post("/upload/student", protect, restrictTo(["student"]), studentUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    if (useS3) {
-      // Upload to S3
-      try {
-        const fileName = req.file.originalname || 'student_submission';
-        const s3Url = await uploadToS3(req.file.buffer, fileName, req.file.mimetype, 'student-submissions');
-        
-        console.log('Student submission uploaded to S3 successfully:', s3Url);
-        return res.json({ 
-          message: "Student submission saved to S3", 
-          url: s3Url,
-          provider: 'S3'
-        });
-      } catch (s3Error) {
-        console.error('S3 upload failed for student, falling back to local storage:', s3Error);
-        // Fall back to local storage if S3 fails
-      }
+    // Upload to S3 only - no local storage
+    if (!useS3) {
+      return res.status(500).json({ 
+        message: "S3 storage is not configured" 
+      });
     }
 
-    // Fallback to local storage (original implementation)
-    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(req.file.originalname) || '.webm';
-    const filename = `${unique}${ext}`;
-    const filepath = path.join(studentUploadDir, filename);
-    
-    // Write buffer to file
-    fs.writeFileSync(filepath, req.file.buffer);
-    
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/studentSubmission/${filename}`;
-    res.json({ 
-      message: "Student submission saved", 
-      url: fileUrl,
-      provider: 'local'
-    });
+    try {
+      const fileName = req.file.originalname || 'student_submission';
+      const s3Url = await uploadToS3(req.file.buffer, fileName, req.file.mimetype, 'student-submissions');
+      
+      console.log('Student submission uploaded to S3 successfully:', s3Url);
+      return res.json({ 
+        message: "Student submission saved to S3", 
+        url: s3Url,
+        provider: 'S3'
+      });
+    } catch (s3Error) {
+      console.error('S3 upload failed for student:', s3Error);
+      return res.status(500).json({ 
+        message: "S3 upload failed. Please try again.",
+        error: s3Error.message 
+      });
+    }
   } catch (err) {
     console.error("Student upload error:", err);
     res.status(500).json({ message: "Error uploading student submission" });
@@ -252,5 +221,5 @@ router.use((err, req, res, next) => {
   }
   next();
 });
-
+10
 module.exports = router;

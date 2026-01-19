@@ -3,12 +3,25 @@ const AWS = require('aws-sdk');
 const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION || 'us-east-1'
+  region: process.env.AWS_REGION || 'ap-south-1'
 });
 
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'celts-audio-files';
 
+// Check if S3 is properly configured
+function isS3Configured() {
+  return !!(
+    process.env.AWS_ACCESS_KEY_ID &&
+    process.env.AWS_SECRET_ACCESS_KEY &&
+    process.env.S3_BUCKET_NAME
+  );
+}
+
 async function uploadToS3(fileBuffer, fileName, mimeType, folder = 'audio') {
+  if (!isS3Configured()) {
+    throw new Error('S3 is not properly configured. Please check AWS credentials.');
+  }
+
   const key = `${folder}/${Date.now()}-${fileName}`;
   
   const params = {
@@ -25,7 +38,7 @@ async function uploadToS3(fileBuffer, fileName, mimeType, folder = 'audio') {
     return result.Location;
   } catch (error) {
     console.error('Error uploading file to S3:', error);
-    throw new Error('Failed to upload file to S3');
+    throw error;
   }
 }
 
@@ -75,5 +88,6 @@ module.exports = {
   uploadToS3,
   deleteFromS3,
   getSignedUrl,
+  isS3Configured,
   BUCKET_NAME
 };
