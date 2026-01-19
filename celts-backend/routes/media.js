@@ -42,7 +42,7 @@ const allowedMimes = new Set([
 function createUploader(destinationFolder) {
   return multer({
     storage: multer.memoryStorage(), 
-    limits: { fileSize: 20 * 1024 * 1024 }, 
+    limits: { fileSize: 100 * 1024 * 1024 }, 
     fileFilter: (req, file, cb) => {
       if (!allowedMimes.has(file.mimetype)) {
         const err = new Error("Invalid file type. Audio, Video and Image only.");
