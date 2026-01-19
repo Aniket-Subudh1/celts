@@ -148,7 +148,10 @@ export function BatchManagement() {
         setBatches([]);
         return;
       }
-      setBatches(res.data || []);
+
+      const result = res.data;
+      setBatches(Array.isArray(result?.data) ? result.data : []);
+
     } catch (err: any) {
       setError(err.message || "Failed to load batches");
       setBatches([]);
@@ -157,11 +160,13 @@ export function BatchManagement() {
     }
   }
 
+
   async function fetchFacultyOptions() {
     try {
       const res = await api.apiGet("/admin/users?role=faculty");
       if (!res.ok) return;
-      const opts = (res.data || []).map((u: any) => ({
+      const list = Array.isArray(res.data?.data) ? res.data.data : [];
+      const opts = list.map((u: any) => ({
         id: u._id || u.id,
         name: u.name,
         systemId: u.systemId,
@@ -174,7 +179,8 @@ export function BatchManagement() {
     try {
       const res = await api.apiGet("/admin/users?role=student");
       if (!res.ok) return;
-      const opts = (res.data || []).map((u: any) => ({
+      const list = Array.isArray(res.data?.data) ? res.data.data : [];
+      const opts = list.map((u: any) => ({
         id: u._id || u.id,
         name: u.name,
         systemId: u.systemId,
@@ -456,6 +462,9 @@ export function BatchManagement() {
                   placeholder="Program"
                 />
                 <Input
+                  type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={newYear ?? ""}
                   onChange={(e) =>
                     setNewYear(e.target.value ? Number(e.target.value) : "")

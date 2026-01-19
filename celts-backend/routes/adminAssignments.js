@@ -4,6 +4,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
+const { paginate } = require('../utils/pagination');
 
 function removeStudentIdFromArray(arr, studentId) {
   if (!Array.isArray(arr)) return [];
@@ -26,62 +27,6 @@ router.post('/faculty-batch', protect, restrictTo(['admin']), async (req, res) =
   } catch (err) { return res.status(500).json({ message: err.message }); }
 });
 
-router.post('/student-to-faculty', protect, restrictTo(['admin']), async (req, res) => {
-  const { studentId, facultyId } = req.body;
-  if (!studentId || !facultyId) return res.status(400).json({ message: 'studentId and facultyId required' });
-  if (!isValidId(studentId) || !isValidId(facultyId)) return res.status(400).json({ message: 'invalid id' });
-
-  const session = await mongoose.startSession();
-  try {
-    session.startTransaction();
-    const student = await User.findById(studentId).session(session);
-    const newFaculty = await User.findById(facultyId).session(session);
-    if (!student || student.role !== 'student') { await session.abortTransaction(); session.endSession(); return res.status(404).json({ message: 'Student not found' }); }
-    if (!newFaculty || newFaculty.role !== 'faculty') { await session.abortTransaction(); session.endSession(); return res.status(404).json({ message: 'Faculty not found' }); }
-
-    const oldFacultyId = student.assignedFaculty ? student.assignedFaculty.toString() : null;
-    student.assignedFaculty = newFaculty._id;
-    if (newFaculty.cohort) student.cohort = newFaculty.cohort;
-    await student.save({ session });
-
-    if (!Array.isArray(newFaculty.students)) newFaculty.students = [];
-    if (!newFaculty.students.find(id => id.toString() === student._id.toString())) {
-      newFaculty.students.push(student._id);
-      await newFaculty.save({ session });
-    }
-
-    if (oldFacultyId && oldFacultyId !== newFaculty._id.toString()) {
-      const oldFaculty = await User.findById(oldFacultyId).session(session);
-      if (oldFaculty) { oldFaculty.students = removeStudentIdFromArray(oldFaculty.students, student._id); await oldFaculty.save({ session }); }
-    }
-
-    await session.commitTransaction(); session.endSession();
-
-    const updatedStudent = await User.findById(student._id).select('-password').populate('assignedFaculty','name email cohort');
-    const updatedFaculty = await User.findById(newFaculty._id).select('-password').populate('students','name email cohort');
-
-    return res.json({ message: 'assigned', student: updatedStudent, faculty: updatedFaculty });
-  } catch (err) {
-    await session.abortTransaction().catch(()=>{}); session.endSession();
-    // fallback non-transactional (best-effort)
-    try {
-      const student = await User.findById(studentId);
-      const newFaculty = await User.findById(facultyId);
-      student.assignedFaculty = newFaculty._id; if (newFaculty.cohort) student.cohort = newFaculty.cohort; await student.save();
-      if (!Array.isArray(newFaculty.students)) newFaculty.students = [];
-      if (!newFaculty.students.find(id => id.toString()===student._id.toString())) { newFaculty.students.push(student._id); await newFaculty.save(); }
-      if (student.assignedFaculty && student.assignedFaculty.toString() !== newFaculty._id.toString()) {
-        const oldFaculty = await User.findById(student.assignedFaculty);
-        if (oldFaculty) { oldFaculty.students = removeStudentIdFromArray(oldFaculty.students, student._id); await oldFaculty.save(); }
-      }
-      const updatedStudent = await User.findById(student._id).select('-password').populate('assignedFaculty','name email cohort');
-      const updatedFaculty = await User.findById(newFaculty._id).select('-password').populate('students','name email cohort');
-      return res.json({ message: 'assigned (fallback)', student: updatedStudent, faculty: updatedFaculty });
-    } catch (err2) {
-      return res.status(500).json({ message: 'assignment failed', details: err2.message });
-    }
-  }
-});
 
 router.post('/unassign-student', protect, restrictTo(['admin']), async (req, res) => {
   const { studentId } = req.body;
@@ -125,26 +70,38 @@ router.get('/faculty/:facultyId/students', protect, restrictTo(['admin','faculty
   const facultyId = req.params.facultyId;
   if (!isValidId(facultyId)) return res.status(400).json({ message: 'invalid id' });
   try {
-    const faculty = await User.findById(facultyId).select('-password').populate('students','name email cohort');
+    // const faculty = await User.findById(facultyId).select('-password').populate('students','name email cohort');
+    const faculty = await User.findById(facultyId) .select('_id name cohort role students').lean();
+
     if (!faculty || faculty.role !== 'faculty') return res.status(404).json({ message: 'Faculty not found' });
     if (req.user.role === 'faculty' && req.user._id.toString() !== facultyId) return res.status(403).json({ message: 'Forbidden' });
-    return res.json({ faculty: { id: faculty._id, name: faculty.name, cohort: faculty.cohort }, students: faculty.students || [] });
+    
+    //paginate students
+      const studentsResult = await paginate(req, User, {
+        filter: {
+          _id: { $in: faculty.students || [] },
+          role: 'student',
+        },
+        select: 'name email cohort',
+        sort: { name: 1 },
+      });
+
+
+    return res.json({ faculty: { id: faculty._id, name: faculty.name, cohort: faculty.cohort }, students: studentsResult.data,
+
+        // pagination metadata (non-breaking)
+        studentsPagination: {
+          page: studentsResult.page,
+          limit: studentsResult.limit,
+          total: studentsResult.total,
+          totalPages: studentsResult.totalPages,
+          hasNext: studentsResult.hasNext,
+          hasPrev: studentsResult.hasPrev,
+        },
+      });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
-});
-
-router.get('/faculties', protect, restrictTo(['admin']), async (req, res) => {
-  const { cohort } = req.query;
-  const filter = { role: 'faculty' }; if (cohort) filter.cohort = cohort;
-  try {
-    const faculties = await User.find(filter).select('-password').lean();
-    const withCounts = await Promise.all(faculties.map(async f => {
-      const count = await User.countDocuments({ assignedFaculty: f._id });
-      return { ...f, studentCount: count };
-    }));
-    return res.json(withCounts);
-  } catch (err) { return res.status(500).json({ message: err.message }); }
 });
 
 module.exports = router;

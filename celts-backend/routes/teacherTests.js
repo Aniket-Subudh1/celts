@@ -5,6 +5,8 @@ const mongoose = require('mongoose');
 
 const TestSet = require('../models/TestSet');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
+const { paginate } = require('../utils/pagination');
+
 
 // Create test (teacher)
 router.post('/', protect, restrictTo(['faculty']), async (req, res) => {
@@ -96,10 +98,28 @@ router.get('/', protect, restrictTo(['faculty']), async (req, res) => {
   try {
     const filter = {};
     if (req.query.mine === 'true') filter.createdBy = req.user._id;
-    const tests = await TestSet.find(filter)
-      .populate('createdBy', 'name email')
-      .lean();
-    return res.json(tests);
+    // const tests = await TestSet.find(filter)
+    //   .populate('createdBy', 'name email')
+    //   .lean();
+    // return res.json(tests);
+    const paginated = await paginate(req, TestSet, {
+      filter,
+      populate: [{ path: 'createdBy', select: 'name email' }],
+      sort: { createdAt: -1 },
+      defaultLimit: 50,
+      maxLimit: 60,
+    });
+
+    return res.json({
+      tests: paginated.data,
+      pagination: {
+        page: paginated.page,
+        limit: paginated.limit,
+        total: paginated.total,
+        hasNext: paginated.hasNext,
+      },
+    });
+    
   } catch (err) {
     console.error('Error fetching tests:', err);
     return res.status(500).json({ message: 'Server error fetching tests' });
@@ -160,6 +180,62 @@ router.delete('/:id', protect, restrictTo(['faculty']), async (req, res) => {
     return res.status(500).json({ message: 'Server error deleting test' });
   }
 });
+
+
+
+
+
+// PATCH /teacher/tests/:id/assign-batches
+router.patch(
+  '/:id/assign-batches',
+  protect,
+  restrictTo(['faculty']),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { batchIds = [], mode = 'add' } = req.body;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: 'Invalid test id' });
+      }
+
+      if (!Array.isArray(batchIds)) {
+        return res.status(400).json({ message: 'batchIds must be an array' });
+      }
+
+      const test = await TestSet.findById(id);
+      if (!test) {
+        return res.status(404).json({ message: 'Test not found' });
+      }
+
+      // Ensure faculty owns the test
+      if (String(test.createdBy) !== String(req.user._id)) {
+        return res.status(403).json({ message: 'Not allowed to modify this test' });
+      }
+
+      const existing = new Set(
+        (test.assignedBatches || []).map((b) => String(b))
+      );
+
+      if (mode === 'remove') {
+        batchIds.forEach((id) => existing.delete(String(id)));
+      } else {
+        batchIds.forEach((id) => existing.add(String(id)));
+      }
+
+      test.assignedBatches = Array.from(existing);
+      await test.save();
+
+      return res.json({
+        message: 'Batches updated',
+        test,
+      });
+    } catch (err) {
+      console.error('[teacher assign-batches] error:', err);
+      return res.status(500).json({ message: 'Server error assigning batches' });
+    }
+  }
+);
 
 
 

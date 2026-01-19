@@ -14,6 +14,8 @@ import {
     CalendarClock,
 } from "lucide-react";
 import api from "@/lib/api";
+import { buildPaginationQuery } from "@/utils/pagination";
+
 
 type NullableNumber = number | null | undefined;
 
@@ -98,7 +100,10 @@ export function AuditLog() {
         setLoading(true);
         setError(null);
         try {
-            const res = await api.apiGet("/admin/audit/overrides");
+            //const res = await api.apiGet("/admin/audit/overrides");
+            const pageQuery = buildPaginationQuery(1, 50);
+            const res = await api.apiGet(`/admin/audit/overrides?${pageQuery}`);
+
             if (!res.ok) {
                 setError(res.error?.message || "Failed to fetch override logs");
                 setLogs([]);
@@ -106,8 +111,13 @@ export function AuditLog() {
                 return;
             }
 
-            const data: OverridesResponse = res.data || { logs: [] };
-            setLogs(Array.isArray(data.logs) ? data.logs : []);
+            const logsData = Array.isArray(res.data?.data?.logs)
+                ? res.data.data.logs
+                : Array.isArray(res.data?.logs)
+                    ? res.data.logs
+                    : [];
+
+            setLogs(logsData);
         } catch (err: any) {
             console.error("[AuditLog] fetch error:", err);
             setError(err?.message || "Network error");
@@ -123,13 +133,27 @@ export function AuditLog() {
 
     const batchOptions = useMemo(() => {
         const map = new Map<string, string>();
+
         logs.forEach((l) => {
-            const id = l.batchId || "unassigned";
-            const name = l.batchName || "Unassigned / No batch";
-            if (!map.has(id)) map.set(id, name);
+            const id = l.batchId ?? "unassigned";
+
+            // Prefer batchName, otherwise show shortened batchId
+            let label = "Unassigned / No batch";
+
+            if (l.batchName && l.batchName.trim()) {
+                label = l.batchName;
+            } else if (l.batchId) {
+                label = `Batch (${l.batchId.slice(-6)})`;
+            }
+
+            if (!map.has(id)) {
+                map.set(id, label);
+            }
         });
+
         return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
     }, [logs]);
+
 
     const distinctFacultyCount = useMemo(() => {
         const set = new Set<string>();
@@ -354,6 +378,8 @@ export function AuditLog() {
                             }
                         >
                             <option value="all">All skills</option>
+                            <option value="reading">Reading</option>
+                            <option value="listening">Listening</option>
                             <option value="writing">Writing</option>
                             <option value="speaking">Speaking</option>
                         </select>

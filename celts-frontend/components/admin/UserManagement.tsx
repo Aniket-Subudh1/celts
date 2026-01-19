@@ -15,11 +15,9 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Edit2, Trash2, Lock } from "lucide-react";
 import api from "@/lib/api";
+import { usePagination } from "@/hooks/usePagination";
+import { normalizePagination } from "@/utils/pagination";
 
-
-const MAX_VISIBLE_ROWS = 15;
-const ROW_HEIGHT = 56; 
-const TABLE_BODY_HEIGHT = MAX_VISIBLE_ROWS * ROW_HEIGHT;
 
 interface User {
   id: string;
@@ -73,66 +71,94 @@ export function UserManagement() {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
 
+  const pagination = usePagination({ initialLimit: 10 });
+  const adminPg = usePagination({ initialLimit: 10 });
+  const facultyPg = usePagination({ initialLimit: 10 });
+  const studentPg = usePagination({ initialLimit: 10 });
+
+  const [admins, setAdmins] = useState<User[]>([]);
+  const [faculty, setFaculty] = useState<User[]>([]);
+  const [students, setStudents] = useState<User[]>([]);
+
+  const fetchByRole = async (
+    role: "admin" | "faculty" | "student",
+    pg: ReturnType<typeof usePagination>,
+    setter: (u: User[]) => void
+  ) => {
+    const res = await api.apiGet(
+      `/admin/users?role=${role}&page=${pg.page}&limit=${pg.limit}`
+    );
+
+    if (!res.ok || !res.data) {
+      setter([]);
+      return;
+    }
+
+    const { items, pagination } = normalizePagination(res.data);
+
+    setter(
+      items.map((u: any) => ({
+        id: u._id,
+        name: u.name,
+        email: u.email,
+        systemId: u.systemId,
+        role: u.role,
+        status: normalizeStatus(
+          u.isActive === false ? "inactive" : u.status ?? "active"
+        ),
+        joinDate: u.createdAt
+          ? new Date(u.createdAt).toISOString().slice(0, 10)
+          : "",
+      }))
+    );
+
+    pg.setTotal(pagination.total);
+  };
+
+  useEffect(() => {
+    fetchByRole("admin", adminPg, setAdmins);
+    fetchByRole("faculty", facultyPg, setFaculty);
+    fetchByRole("student", studentPg, setStudents);
+  }, [adminPg.page, facultyPg.page, studentPg.page]);
+
 
   // Fetch all users
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-      const res = await api.apiGet("/admin/users");
-      if (res.ok && Array.isArray(res.data)) {
-        const data: User[] = res.data.map((u: any) => ({
-          id: u._id || u.id || String(Math.random()),
-          name: u.name || "",
-          email: u.email || "",
-          systemId: u.systemId || "",
-          role: (u.role || "student") as "admin" | "faculty" | "student",
-          status: normalizeStatus(
-            u.isActive === false ? "inactive" : u.status ?? "active"
-          ),
-          joinDate: u.createdAt
-            ? new Date(u.createdAt).toISOString().slice(0, 10)
-            : new Date().toISOString().slice(0, 10),
-        }));
-        setUsers(data);
-      } else {
+      const res = await api.apiGet(`/admin/users?page=${pagination.page}&limit=${pagination.limit}`);
+      if (!res.ok || !res.data) {
         setUsers([]);
+        return;
       }
+      const { items, pagination: meta } = normalizePagination(res.data);
+      const mapped: User[] = items.map((u: any) => ({
+        id: u._id || u.id,
+        name: u.name || "",
+        email: u.email || "",
+        systemId: u.systemId || "",
+        role: (u.role || "student") as any,
+        status: normalizeStatus(
+          u.isActive === false ? "inactive" : u.status ?? "active"
+        ),
+        joinDate: u.createdAt
+          ? new Date(u.createdAt).toISOString().slice(0, 10)
+          : "",
+      }));
+
+      setUsers(mapped);
+      pagination.setTotal(meta.total);
     } catch (err) {
       console.error("Failed to fetch users:", err);
       setUsers([]);
     } finally {
       setLoadingUsers(false);
     }
-  }, []);
+  }, [pagination.page, pagination.limit]);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
-
-  // Filtered lists
-  const adminUsers = users.filter(
-    (u) =>
-      u.role === "admin" &&
-      (u.name.toLowerCase().includes(adminSearch.toLowerCase()) ||
-        u.email.toLowerCase().includes(adminSearch.toLowerCase()) ||
-        u.systemId.toLowerCase().includes(adminSearch.toLowerCase()))
-  );
-
-  const facultyUsers = users.filter(
-    (u) =>
-      u.role === "faculty" &&
-      (u.name.toLowerCase().includes(facultySearch.toLowerCase()) ||
-        u.email.toLowerCase().includes(facultySearch.toLowerCase()) ||
-        u.systemId.toLowerCase().includes(facultySearch.toLowerCase()))
-  );
-
-  const studentUsers = users.filter(
-    (u) =>
-      u.role === "student" &&
-      (u.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
-        u.email.toLowerCase().includes(studentSearch.toLowerCase()) ||
-        u.systemId.toLowerCase().includes(studentSearch.toLowerCase()))
-  );
 
   // Edit user
   const handleEdit = (user: User) => {
@@ -386,7 +412,8 @@ export function UserManagement() {
     title: string,
     list: User[],
     search: string,
-    setSearch: (v: string) => void
+    setSearch: (v: string) => void,
+    pg: ReturnType<typeof usePagination>
   ) => {
     const isStudentTable = title === "Students";
 
@@ -417,10 +444,7 @@ export function UserManagement() {
         </div>
 
         {/* Scrollable Table */}
-        <div
-          className="overflow-y-auto"
-          style={{ maxHeight: TABLE_BODY_HEIGHT }}
-        >
+        <div className="w-full overflow-x-auto">
           <table className="w-full">
             <thead className="bg-muted sticky top-0 z-10">
               <tr className="border-b">
@@ -527,6 +551,57 @@ export function UserManagement() {
             </tbody>
           </table>
         </div>
+
+
+
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t bg-muted/40">
+  <div className="text-sm text-muted-foreground">
+    Showing{" "}
+    <span className="font-medium text-foreground">
+      {(pg.page - 1) * pg.limit + 1}
+      –
+      {Math.min(pg.page * pg.limit, pg.total)}
+    </span>{" "}
+    of{" "}
+    <span className="font-medium text-foreground">
+      {pg.total}
+    </span>{" "}
+    users
+  </div>
+
+  <div className="flex items-center gap-3">
+    <span className="text-sm text-muted-foreground">
+      Page{" "}
+      <span className="font-medium text-foreground">
+        {pg.page}
+      </span>{" "}
+      of{" "}
+      <span className="font-medium text-foreground">
+        {Math.max(1, Math.ceil(pg.total / pg.limit))}
+      </span>
+    </span>
+
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={!pg.hasPrev}
+      onClick={pg.prevPage}
+    >
+      Prev
+    </Button>
+
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={!pg.hasNext}
+      onClick={pg.nextPage}
+    >
+      Next
+    </Button>
+  </div>
+</div>
+
+
       </Card>
     );
   };
@@ -648,9 +723,14 @@ export function UserManagement() {
         </div>
       </div>
 
-      {renderTable("Admins", adminUsers, adminSearch, setAdminSearch)}
+      {/* {renderTable("Admins", adminUsers, adminSearch, setAdminSearch)}
       {renderTable("Faculty", facultyUsers, facultySearch, setFacultySearch)}
-      {renderTable("Students", studentUsers, studentSearch, setStudentSearch)}
+      {renderTable("Students", studentUsers, studentSearch, setStudentSearch)} */}
+      {renderTable("Admins", admins, adminSearch, setAdminSearch, adminPg)}
+{renderTable("Faculty", faculty, facultySearch, setFacultySearch, facultyPg)}
+{renderTable("Students", students, studentSearch, setStudentSearch, studentPg)}
+
+
 
       {bulkLoading && <div className="text-sm">Uploading CSV...</div>}
       {bulkMessage && (

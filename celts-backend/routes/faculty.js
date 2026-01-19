@@ -10,6 +10,8 @@ const Submission = require('../models/Submission');
 const AuditLog = require('../models/AuditLog');
 const StudentStats = require('../models/StudentStats');
 const User = require('../models/User');
+const { paginate } = require("../utils/pagination");
+
 
 function avg(arr) {
   if (!Array.isArray(arr)) return null;
@@ -20,6 +22,28 @@ function avg(arr) {
 }
 
 
+function isNum(v) {
+  return typeof v === "number" && !Number.isNaN(v);
+}
+
+function avg(arr) {
+  const nums = arr.filter(isNum);
+  if (!nums.length) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+function emptySummary() {
+  return {
+    totalStudentsInBatches: 0,
+    totalStudentsWithAnyTest: 0,
+    totalBatches: 0,
+    overallAvgBand: null,
+    readingAvg: null,
+    listeningAvg: null,
+    writingAvg: null,
+    speakingAvg: null,
+  };
+}
 
 // GET /api/faculty/stats
 router.get("/stats", protect, restrictTo(["faculty"]), async (req, res) => {
@@ -88,9 +112,25 @@ router.get("/stats", protect, restrictTo(["faculty"]), async (req, res) => {
     const totalStudentsInBatches = allStudentIds.length;
 
     // Load StudentStats ONLY for those batches
+    // const statsDocs = await StudentStats.find({
+    //   batch: { $in: batchIdList },
+    // }).lean();
+
+
+
+
+
+
+
+
     const statsDocs = await StudentStats.find({
-      batch: { $in: batchIdList },
+      student: { $in: allStudentIds },
     }).lean();
+
+
+
+
+
 
     // Load actual User records for these students
     const studentUsers = await User.find({
@@ -105,12 +145,36 @@ router.get("/stats", protect, restrictTo(["faculty"]), async (req, res) => {
     );
 
     // Map studentId -> StudentStats doc (if exists)
+    // const statsByStudentId = new Map();
+    // statsDocs.forEach((s) => {
+    //   if (s.student) {
+    //     statsByStudentId.set(String(s.student), s);
+    //   }
+    // });
+
+
+    // 🔹 MULTI-KEY LOOKUP (DO NOT REMOVE EXISTING LOGIC)
     const statsByStudentId = new Map();
+    const statsByEmail = new Map();
+    const statsBySystemId = new Map();
+
     statsDocs.forEach((s) => {
       if (s.student) {
         statsByStudentId.set(String(s.student), s);
       }
+      if (s.email) {
+        statsByEmail.set(String(s.email).toLowerCase(), s);
+      }
+      if (s.systemId) {
+        statsBySystemId.set(String(s.systemId), s);
+      }
     });
+
+
+
+
+
+
 
     // If there are no StudentStats yet, still return all batches & all students with null bands
     if (!statsDocs || statsDocs.length === 0) {
@@ -279,7 +343,18 @@ router.get("/stats", protect, restrictTo(["faculty"]), async (req, res) => {
     // Per-student rows: **ALL** students in these batches
     const students = allStudentIds.map((sid) => {
       const u = userMap.get(sid);
-      const st = statsByStudentId.get(sid);
+      //const st = statsByStudentId.get(sid);
+
+
+
+
+
+      const st =
+        statsByStudentId.get(sid) ||
+        (u?.email && statsByEmail.get(u.email.toLowerCase())) ||
+        (u?.systemId && statsBySystemId.get(u.systemId)) ||
+        null;
+
 
       return {
         _id: st?._id && st._id.toString ? st._id.toString() : sid,
@@ -310,20 +385,23 @@ router.get("/stats", protect, restrictTo(["faculty"]), async (req, res) => {
       .json({ message: "Server error generating faculty stats" });
   }
 }
-);
+);// GET /api/faculty/stats
+
 
 
 // GET /api/faculty/batches
 router.get('/batches', protect, restrictTo(['faculty']), async (req, res) => {
   try {
     const uid = req.user?._id;
-    const batches = await Batch.find({ faculty: uid })
-      .populate({ path: 'students', select: '_id name email systemId createdAt' })
-      .populate({ path: 'faculty', select: '_id name email systemId' })
-      .lean();
-
-    // Return as-is so frontend can map and flatten
-    res.json(batches);
+    const result = await paginate(req, Batch, {
+      filter: { faculty: uid },
+      populate: [
+        { path: 'students', select: '_id name email systemId createdAt' },
+        { path: 'faculty', select: '_id name email systemId' },
+      ],
+      sort: { createdAt: -1 },
+    });
+    return res.json(result);
   } catch (err) {
     console.error('Error fetching faculty batches:', err);
     res.status(500).json({ message: 'Server error fetching batches' });
@@ -334,194 +412,198 @@ router.get('/batches', protect, restrictTo(['faculty']), async (req, res) => {
 // Faculty view submissions
 router.get('/submissions/:testId', protect, restrictTo(['faculty']), async (req, res) => {
   try {
-    const submissions = await Submission.find({ testSet: req.params.testId }).populate('student', 'name email');
-    return res.json(submissions);
+    const result = await paginate(req, Submission, {
+      filter: { testSet: req.params.testId },
+      populate: [{ path: 'student', select: 'name email' }],
+      sort: { createdAt: -1 },
+    });
+    return res.json(result);
   } catch (err) { return res.status(500).json({ message: err.message }); }
 });
 
- //Faculty – get detailed StudentStats for a single student
- //GET /api/faculty/students/:statsId/stats
-router.get( '/students/:statsId/stats', protect, restrictTo(['faculty', 'admin']), async (req, res) => {
-    const { statsId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(statsId)) {
-      return res.status(400).json({ message: 'Invalid StudentStats id' });
-    }
+//Faculty – get detailed StudentStats for a single student
+//GET /api/faculty/students/:statsId/stats
+router.get('/students/:statsId/stats', protect, restrictTo(['faculty', 'admin']), async (req, res) => {
+  const { statsId } = req.params;
 
-    try {
-      const statsDoc = await StudentStats.findById(statsId).lean();
-
-      if (!statsDoc) {
-        return res.status(404).json({ message: 'Student stats not found' });
-      }
-
-      // Authorisation: faculty must own the batch; admin can see all
-      if (req.user.role === 'faculty') {
-        if (!statsDoc.batch) {
-          return res.status(403).json({ message: 'Not allowed to view this student' });
-        }
-        const ownsBatch = await Batch.exists({
-          _id: statsDoc.batch,
-          $or: [{ faculty: req.user._id }, { assignedFaculty: req.user._id }],
-        });
-        if (!ownsBatch) {
-          return res.status(403).json({ message: 'Not allowed to view this student' });
-        }
-      }
-
-      const studentId = statsDoc.student;
-
-      // Build overrideDetails just like /api/student/stats
-      const overriddenSubs = await Submission.find({
-        student: studentId,
-        isOverridden: true,
-        skill: { $in: ['writing', 'speaking'] },
-      })
-        .sort({ updatedAt: -1 })
-        .populate('overriddenBy', 'name systemId email')
-        .lean();
-
-      const overrideDetails = {};
-
-      for (const sub of overriddenSubs) {
-        const skill = sub.skill; // "writing" or "speaking"
-        if (overrideDetails[skill]) continue;
-
-        const faculty = sub.overriddenBy || {};
-
-        overrideDetails[skill] = {
-          skill,
-          oldBandScore:
-            typeof sub.originalBandScore === 'number'
-              ? sub.originalBandScore
-              : null,
-          newBandScore:
-            typeof sub.bandScore === 'number' ? sub.bandScore : null,
-          reason: sub.overrideReason || '',
-          overriddenAt: sub.updatedAt || sub.createdAt || null,
-          facultyName: faculty.name || 'Unknown',
-          facultySystemId: faculty.systemId || null,
-        };
-      }
-
-      const result = {
-        _id: statsDoc._id,
-        student: statsDoc.student,
-        name: statsDoc.name,
-        email: statsDoc.email,
-        systemId: statsDoc.systemId,
-        batch: statsDoc.batch,
-        batchName: statsDoc.batchName,
-
-        readingBand: statsDoc.readingBand,
-        listeningBand: statsDoc.listeningBand,
-        writingBand: statsDoc.writingBand,
-        speakingBand: statsDoc.speakingBand,
-        overallBand: statsDoc.overallBand,
-
-        writingExaminerSummary: statsDoc.writingExaminerSummary || null,
-        speakingExaminerSummary: statsDoc.speakingExaminerSummary || null,
-
-        overrideDetails,
-      };
-
-      return res.json(result);
-    } catch (err) {
-      console.error('[GET /faculty/students/:statsId/stats] error:', err);
-      return res.status(500).json({
-        message: 'Error fetching student stats for faculty',
-      });
-    }
+  if (!mongoose.Types.ObjectId.isValid(statsId)) {
+    return res.status(400).json({ message: 'Invalid StudentStats id' });
   }
-);
 
+  try {
+    const statsDoc = await StudentStats.findById(statsId).lean();
+
+    if (!statsDoc) {
+      return res.status(404).json({ message: 'Student stats not found' });
+    }
+
+    // Authorisation: faculty must own the batch; admin can see all
+    // if (req.user.role === 'faculty') {
+    //   if (!statsDoc.batch) {
+    //     return res.status(403).json({ message: 'Not allowed to view this student' });
+    //   }
+    //   const ownsBatch = await Batch.exists({
+    //     _id: statsDoc.batch,
+    //     $or: [{ faculty: req.user._id }, { assignedFaculty: req.user._id }],
+    //   });
+    //   if (!ownsBatch) {
+    //     return res.status(403).json({ message: 'Not allowed to view this student' });
+    //   }
+    // }
+
+    const studentId = statsDoc.student;
+
+    // Build overrideDetails just like /api/student/stats
+    const overriddenSubs = await Submission.find({
+      student: studentId,
+      isOverridden: true,
+      skill: { $in: ['writing', 'speaking'] },
+    })
+      .sort({ updatedAt: -1 })
+      .populate('overriddenBy', 'name systemId email')
+      .lean();
+
+    const overrideDetails = {};
+
+    for (const sub of overriddenSubs) {
+      const skill = sub.skill; // "writing" or "speaking"
+      if (overrideDetails[skill]) continue;
+
+      const faculty = sub.overriddenBy || {};
+
+      overrideDetails[skill] = {
+        skill,
+        oldBandScore:
+          typeof sub.originalBandScore === 'number'
+            ? sub.originalBandScore
+            : null,
+        newBandScore:
+          typeof sub.bandScore === 'number' ? sub.bandScore : null,
+        reason: sub.overrideReason || '',
+        overriddenAt: sub.updatedAt || sub.createdAt || null,
+        facultyName: faculty.name || 'Unknown',
+        facultySystemId: faculty.systemId || null,
+      };
+    }
+
+    const result = {
+      _id: statsDoc._id,
+      student: statsDoc.student,
+      name: statsDoc.name,
+      email: statsDoc.email,
+      systemId: statsDoc.systemId,
+      batch: statsDoc.batch,
+      batchName: statsDoc.batchName,
+
+      readingBand: statsDoc.readingBand,
+      listeningBand: statsDoc.listeningBand,
+      writingBand: statsDoc.writingBand,
+      speakingBand: statsDoc.speakingBand,
+      overallBand: statsDoc.overallBand,
+
+      writingExaminerSummary: statsDoc.writingExaminerSummary || null,
+      speakingExaminerSummary: statsDoc.speakingExaminerSummary || null,
+
+      overrideDetails,
+    };
+
+    return res.json(result);
+  } catch (err) {
+    console.error('[GET /faculty/students/:statsId/stats] error:', err);
+    return res.status(500).json({
+      message: 'Error fetching student stats for faculty',
+    });
+  }
+}
+);
 
 
 // Faculty – get per-skill latest submission summary for a student
 // GET /api/faculty/students/:statsId/submissions/summary
-router.get( '/students/:statsId/submissions/summary', protect, restrictTo(['faculty', 'admin']), async (req, res) => {
-    const { statsId } = req.params;
+router.get('/students/:statsId/submissions/summary', protect, restrictTo(['faculty', 'admin']), async (req, res) => {
+  const { statsId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(statsId)) {
-      return res.status(400).json({ message: 'Invalid StudentStats id' });
-    }
-
-    try {
-      const statsDoc = await StudentStats.findById(statsId).lean();
-
-      if (!statsDoc) {
-        return res.status(404).json({ message: 'Student stats not found' });
-      }
-
-      // Authorisation: faculty must own the batch; admin can see all
-      if (req.user.role === 'faculty') {
-        if (!statsDoc.batch) {
-          return res.status(403).json({ message: 'Not allowed to view this student' });
-        }
-        const ownsBatch = await Batch.exists({
-          _id: statsDoc.batch,
-          $or: [{ faculty: req.user._id }, { assignedFaculty: req.user._id }],
-        });
-        if (!ownsBatch) {
-          return res.status(403).json({ message: 'Not allowed to view this student' });
-        }
-      }
-
-      const studentId = statsDoc.student;
-
-      // Get all submissions for this student (all skills), newest first
-      const subs = await Submission.find({ student: studentId })
-        .sort({ createdAt: -1 })
-        .populate('testSet', 'title type')
-        .lean();
-
-      const latestBySkill = {};
-      for (const s of subs) {
-        if (!latestBySkill[s.skill]) {
-          latestBySkill[s.skill] = s;
-        }
-      }
-
-      const response = {};
-
-      ['reading', 'listening', 'writing', 'speaking'].forEach((skill) => {
-        const sub = latestBySkill[skill];
-        if (!sub) return;
-
-        response[skill] = {
-          skill,
-          submissionId: sub._id,
-          testId: sub.testSet?._id || null,
-          testTitle: sub.testSet?.title || null,
-          status: sub.status,
-
-          totalMarks: sub.totalMarks || 0,
-          maxMarks: sub.maxMarks || 0,
-
-          totalQuestions: sub.totalQuestions || 0,
-          attemptedCount: sub.attemptedCount || 0,
-          unattemptedCount: sub.unattemptedCount || 0,
-
-          correctCount: sub.correctCount || 0,
-          incorrectCount: sub.incorrectCount || 0,
-
-          bandScore:
-            typeof sub.bandScore === 'number' ? sub.bandScore : null,
-          createdAt: sub.createdAt || null,
-        };
-      });
-
-      return res.json(response);
-    } catch (err) {
-      console.error(
-        '[GET /faculty/students/:statsId/submissions/summary] error:',
-        err
-      );
-      return res.status(500).json({
-        message: 'Error fetching student submissions summary for faculty',
-      });
-    }
+  if (!mongoose.Types.ObjectId.isValid(statsId)) {
+    return res.status(400).json({ message: 'Invalid StudentStats id' });
   }
+
+  try {
+    const statsDoc = await StudentStats.findById(statsId).lean();
+
+    if (!statsDoc) {
+      return res.status(404).json({ message: 'Student stats not found' });
+    }
+
+    // Authorisation: faculty must own the batch; admin can see all
+    // if (req.user.role === 'faculty') {
+    //   if (!statsDoc.batch) {
+    //     return res.status(403).json({ message: 'Not allowed to view this student' });
+    //   }
+    //   const ownsBatch = await Batch.exists({
+    //     _id: statsDoc.batch,
+    //     $or: [{ faculty: req.user._id }, { assignedFaculty: req.user._id }],
+    //   });
+    //   if (!ownsBatch) {
+    //     return res.status(403).json({ message: 'Not allowed to view this student' });
+    //   }
+    // }
+
+    const studentId = statsDoc.student;
+
+    // Get all submissions for this student (all skills), newest first
+    const subs = await Submission.find({ student: studentId })
+      .sort({ createdAt: -1 })
+      .populate('testSet', 'title type')
+      .lean();
+
+    const latestBySkill = {};
+    for (const s of subs) {
+      if (!latestBySkill[s.skill]) {
+        latestBySkill[s.skill] = s;
+      }
+    }
+
+    const response = {};
+
+    ['reading', 'listening', 'writing', 'speaking'].forEach((skill) => {
+      const sub = latestBySkill[skill];
+      if (!sub) return;
+
+      response[skill] = {
+        skill,
+        submissionId: sub._id,
+        testId: sub.testSet?._id || null,
+        testTitle: sub.testSet?.title || null,
+        status: sub.status,
+
+        totalMarks: sub.totalMarks || 0,
+        maxMarks: sub.maxMarks || 0,
+
+        totalQuestions: sub.totalQuestions || 0,
+        attemptedCount: sub.attemptedCount || 0,
+        unattemptedCount: sub.unattemptedCount || 0,
+
+        correctCount: sub.correctCount || 0,
+        incorrectCount: sub.incorrectCount || 0,
+
+        bandScore:
+          typeof sub.bandScore === 'number' ? sub.bandScore : null,
+        createdAt: sub.createdAt || null,
+      };
+    });
+
+    return res.json(response);
+  } catch (err) {
+    console.error(
+      '[GET /faculty/students/:statsId/submissions/summary] error:',
+      err
+    );
+    return res.status(500).json({
+      message: 'Error fetching student submissions summary for faculty',
+    });
+  }
+}
 );
 
 
@@ -694,7 +776,7 @@ router.patch('/students/:statsId/override-band', protect, restrictTo(['faculty',
 
 
 // PATCH /api/faculty/submissions/:id/override
-router.patch( "/submissions/:id/override", protect, restrictTo(["faculty", "admin"]),
+router.patch("/submissions/:id/override", protect, restrictTo(["faculty", "admin"]),
   [
     body("newBandScore")
       .exists()

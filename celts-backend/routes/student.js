@@ -11,6 +11,7 @@ const Batch = require('../models/Batch');
 const StudentStats = require('../models/StudentStats');
 const { submissionQueue } = require('../services/queue');
 const uploadStudentMedia = require('../services/uploadStudentMedia');
+const { paginate } = require("../utils/pagination");
 
 
 function computeBandScore(earnedMarks, maxMarks) {
@@ -81,9 +82,16 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
       orClauses.push({ assignedBatches: { $in: batchIds } });
     }
 
-    const tests = await TestSet.find({ $or: orClauses })
-      .sort({ createdAt: -1 })
-      .lean();
+    // const tests = await TestSet.find({ $or: orClauses })
+    //   .sort({ createdAt: -1 })
+    //   .lean();
+    const paginated = await paginate(req, TestSet, {
+      filter: { $or: orClauses },
+      sort: { createdAt: -1 },
+      defaultLimit: 20,
+      maxLimit: 50,
+    });
+    const tests = paginated.data;
 
     // Get test attempts for this student
     const testAttempts = await TestAttempt.find({
@@ -219,108 +227,6 @@ router.get('/tests', protect, restrictTo(['student']), async (req, res) => {
 
 
 
-
-
-// POST /api/student/submit/:testId/speaking 
-// Accepts multipart/form-data with field "media" for audio/video
-// router.post( '/submit/:testId/speaking', protect, restrictTo(['student']), uploadStudentMedia.array('media')('media'), async (req, res) => {
-//     const { testId } = req.params;
-//     const skill = 'speaking';
-
-//     try {
-//       if (!mongoose.Types.ObjectId.isValid(testId)) {
-//         return res.status(400).json({ message: 'Invalid testId' });
-//       }
-
-//       const testSet = await TestSet.findById(testId);
-//       if (!testSet) {
-//         return res.status(404).json({ message: 'Test not found' });
-//       }
-
-//       const allowed = await canStudentStart(testSet, req.user);
-//       if (!allowed) {
-//         return res
-//           .status(403)
-//           .json({ message: 'Not allowed to start/submit this test now (timing rules)' });
-//       }
-
-//       // response & evaluationPayload come as JSON strings in multipart
-//       let responseObj = {};
-//       let evaluationPayload = null;
-
-//       if (req.body.response) {
-//         try {
-//           responseObj = JSON.parse(req.body.response);
-//         } catch {
-//           responseObj = {};
-//         }
-//       }
-
-//       if (req.body.evaluationPayload) {
-//         try {
-//           evaluationPayload = JSON.parse(req.body.evaluationPayload);
-//         } catch {
-//           evaluationPayload = null;
-//         }
-//       }
-
-//       // Count speaking questions & attempts
-//       const speakingQuestions = (testSet.questions || []).filter(
-//         (q) => q.questionType === 'speaking'
-//       );
-
-//       const totalQuestions = speakingQuestions.length;
-
-//       // Simplest logic: if we received a media file, treat it as "attempted"
-//       const attemptedCount = req.file && totalQuestions > 0 ? totalQuestions : 0;
-//       const unattemptedCount = Math.max(totalQuestions - attemptedCount, 0);
-
-//       const submissionPayload = {
-//         student: req.user._id,
-//         testSet: testSet._id,
-//         skill,
-//         response: responseObj,
-//         status: 'pending', // will be graded by worker
-//         totalMarks: 0,
-//         maxMarks: 0,
-//         correctCount: 0,
-//         incorrectCount: 0,
-//         totalQuestions,
-//         attemptedCount,
-//         unattemptedCount,
-//         bandScore: null,
-//         mediaPath: req.file ? req.file.path : null,
-//       };
-
-//       const submission = await Submission.create(submissionPayload);
-
-//       const jobData = {
-//         submissionId: submission._id.toString(),
-//         studentId: req.user._id.toString(),
-//         testId: testSet._id.toString(),
-//         skill,
-//         response: responseObj,
-//         mediaPath: req.file ? req.file.path : null,
-//         evaluationPayload,
-//       };
-
-//       const job = await submissionQueue.add(jobData);
-//       const jobId = job.id || null;
-
-//       return res.status(202).json({
-//         message: 'Speaking submission accepted for grading',
-//         submissionId: submission._id,
-//         jobId,
-//         summary: null,
-//       });
-//     } catch (err) {
-//       console.error('[POST /student/submit/:testId/speaking] error:', err);
-//       return res.status(500).json({ message: err.message || 'Server error' });
-//     }
-//   }
-// );
-
-
 // POST /api/student/submit/:testId/speaking
 // Accepts multipart/form-data with MULTIPLE "media" files (one per speaking question)
 
@@ -352,7 +258,7 @@ router.post(
         }
       }
 
-      // ✅ Collect media paths PER QUESTION
+      // Collect media paths PER QUESTION
       const mediaPaths = {};
       for (const file of req.files || []) {
         // file.fieldname = media_<questionKey>
@@ -401,7 +307,6 @@ router.post(
 
 // Helper: can student start test?
 async function canStudentStart(testSet, student) {
-  // If no startTime, test is always available
   if (!testSet.startTime) return true;
 
   const now = new Date();
@@ -483,135 +388,6 @@ router.get('/tests/:id', protect, restrictTo(['student']), async (req, res) => {
   }
 });
 
-// POST /api/student/tests/:id/start - Start a test attempt
-router.post('/tests/:id/start', protect, restrictTo(['student']), async (req, res) => {
-  const { id } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({ message: 'Invalid test id' });
-  }
-
-  try {
-    const test = await TestSet.findById(id);
-    if (!test) return res.status(404).json({ message: 'Test not found' });
-
-    // Use findOneAndUpdate with upsert for atomic operation
-    let newAttempt;
-    let attemptNumber = 1;
-
-    // First check if there's already an ongoing attempt
-    const ongoingAttempt = await TestAttempt.findOne({
-      student: req.user._id,
-      testSet: id,
-      status: 'started'
-    });
-
-    if (ongoingAttempt) {
-      // Check if the attempt is still valid (not timed out)
-      const TestSet = require('../models/TestSet');
-      const testSet = await TestSet.findById(id);
-      const timeElapsed = Math.floor((new Date() - ongoingAttempt.startTime) / 1000);
-      const timeLimit = testSet?.timeLimit * 60 || 3600; // Default 1 hour if not specified
-
-      if (timeElapsed >= timeLimit) {
-        // Auto-submit the expired attempt
-        ongoingAttempt.status = 'completed';
-        ongoingAttempt.endTime = new Date();
-        await ongoingAttempt.save();
-
-        console.log(`Auto-submitted expired attempt ${ongoingAttempt._id}`);
-      } else {
-        // Return existing attempt data so frontend can resume
-        return res.status(200).json({
-          message: 'Test attempt resumed',
-          data: {
-            attemptId: ongoingAttempt._id,
-            attemptNumber: ongoingAttempt.attemptNumber,
-            startedAt: ongoingAttempt.startTime,
-            timeElapsed: timeElapsed,
-            timeRemaining: Math.max(0, timeLimit - timeElapsed)
-          },
-          existingAttempt: {
-            attemptId: ongoingAttempt._id,
-            attemptNumber: ongoingAttempt.attemptNumber,
-            startedAt: ongoingAttempt.startTime
-          }
-        });
-      }
-    }
-
-    // Check if student has completed test and is not allowed retry
-    const completedAttempt = await TestAttempt.findOne({
-      student: req.user._id,
-      testSet: id,
-      status: { $in: ['completed', 'abandoned', 'violation_exit'] }
-    });
-
-    // Enhanced reattempt blocking - check ExamSecurity for lockdown status
-    if (completedAttempt) {
-      // Check exam security lockdown status
-      const ExamSecurity = require('../models/ExamSecurity');
-      const examSecurity = await ExamSecurity.findOne({
-        testAttempt: completedAttempt._id,
-        student: req.user._id
-      });
-
-      // Check post-exam security lockdown
-      if (examSecurity?.postExamSecurity?.reattemptBlocked) {
-        return res.status(403).json({
-          message: 'This exam has been secured and locked. No further attempts are allowed.',
-          code: 'EXAM_LOCKED',
-          lockTimestamp: examSecurity.postExamSecurity.lockTimestamp
-        });
-      }
-
-      // Legacy check for retry permission
-      if (!completedAttempt.isRetryAllowed) {
-        return res.status(400).json({
-          message: 'You have already attempted this test. Contact admin for retry permission.',
-          code: 'RETRY_NOT_ALLOWED'
-        });
-      }
-    }
-
-    // Get attempt number
-    const lastAttempt = await TestAttempt.findOne({
-      student: req.user._id,
-      testSet: id
-    }).sort({ attemptNumber: -1 });
-
-    attemptNumber = lastAttempt ? lastAttempt.attemptNumber + 1 : 1;
-
-    // Create new attempt with atomic operation
-    newAttempt = new TestAttempt({
-      student: req.user._id,
-      testSet: id,
-      attemptNumber,
-      status: 'started',
-      startedAt: new Date()
-    });
-
-    await newAttempt.save();
-
-    res.json({
-      message: 'Test attempt started',
-      attemptId: newAttempt._id,
-      attemptNumber: newAttempt.attemptNumber,
-      startedAt: newAttempt.startedAt
-    });
-
-  } catch (err) {
-    console.error('[POST /student/tests/:id/start] error:', err);
-
-    // Handle duplicate key error (race condition)
-    if (err.code === 11000) {
-      return res.status(400).json({
-        message: 'Test attempt already in progress. Please refresh and try again.'
-      });
-    }
-
-    return res.status(500).json({ message: 'Server error' });
-  }
-});
 
 // GET /api/student/tests/:id/attempts - Get attempt history and lockdown status
 router.get('/tests/:id/attempts', protect, restrictTo(['student']), async (req, res) => {
@@ -992,6 +768,75 @@ router.post('/submit/:testId/:skill', protect, restrictTo(['student']), [body('r
     }
   }
 );
+
+
+
+
+
+// GET /api/student/submissions
+// Returns ALL submissions grouped by test
+router.get(
+  "/submissions",
+  protect,
+  restrictTo(["student"]),
+  async (req, res) => {
+    try {
+      const studentId = req.user._id;
+
+      const subs = await Submission.find({ student: studentId })
+        .populate("testSet", "title type")
+        .sort({ createdAt: -1 })
+        .lean();
+
+      // group by testId
+      const testMap = new Map();
+
+      for (const sub of subs) {
+        const testId = String(sub.testSet?._id || sub.testSet);
+        if (!testMap.has(testId)) {
+          testMap.set(testId, {
+            testId,
+            testTitle: sub.testSet?.title || "Untitled Test",
+            testType: sub.testSet?.type,
+            submissions: [],
+          });
+        }
+
+        testMap.get(testId).submissions.push({
+          submissionId: sub._id,
+          skill: sub.skill,
+          status: sub.status,
+          bandScore: sub.bandScore ?? null,
+
+          totalMarks: sub.totalMarks || 0,
+          maxMarks: sub.maxMarks || 0,
+          totalQuestions: sub.totalQuestions || 0,
+          attemptedCount: sub.attemptedCount || 0,
+          unattemptedCount: sub.unattemptedCount || 0,
+          correctCount: sub.correctCount || 0,
+          incorrectCount: sub.incorrectCount || 0,
+
+          examinerSummary:
+            sub.skill === "writing"
+              ? sub.geminiWritingEvaluationSummary
+              : sub.skill === "speaking"
+              ? sub.geminiSpeakingEvaluationSummary
+              : null,
+
+          createdAt: sub.createdAt,
+        });
+      }
+
+      return res.json([...testMap.values()]);
+    } catch (err) {
+      console.error("[GET /student/submissions] error:", err);
+      res.status(500).json({ message: "Failed to load submissions" });
+    }
+  }
+);
+
+
+
 
 
 // GET /api/student/submissions/summary

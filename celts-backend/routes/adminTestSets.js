@@ -9,9 +9,7 @@ const Batch = require('../models/Batch');
 const Submission = require('../models/Submission');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
 
-/* =====================================================
-   CREATE TEST (ADMIN)
-===================================================== */
+//ADMIN CREATE TEST
 router.post('/', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const payload = req.body;
@@ -88,9 +86,9 @@ router.post('/', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-/* =====================================================
-   GET ADMIN TESTS (ONLY OWN)
-===================================================== */
+
+
+//GET TEST CREATED BY ADMIN
 router.get('/', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const tests = await TestSet.find({ createdBy: req.user._id })
@@ -106,36 +104,34 @@ router.get('/', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
+
+
+
 /**
  * GET /admin/tests/faculty
- * Admin fetches ALL tests created by FACULTY
+ * Admin fetches ALL tests 
  */
+router.get('/faculty', protect, restrictTo(['admin']), async (req, res) => {
+  try {
+    const tests = await TestSet.find({})
+      .populate('createdBy', 'name email systemId')
+      .sort({ createdAt: -1 })
+      .lean();
 
-router.get(
-  '/faculty', 
-  protect,
-  restrictTo(['admin']),
-  async (req, res) => {
-    try {
-      const tests = await TestSet.find({})
-        .populate('createdBy', 'name email systemId')
-        .sort({ createdAt: -1 })
-        .lean();
-
-      return res.json(tests);
-    } catch (err) {
-      console.error('Admin fetch tests error:', err);
-      return res
-        .status(500)
-        .json({ message: 'Server error fetching tests' });
-    }
+    return res.json(tests);
+  } catch (err) {
+    console.error('Admin fetch tests error:', err);
+    return res
+      .status(500)
+      .json({ message: 'Server error fetching tests' });
   }
+}
 );
 
 
-/* =====================================================
-   GET TEST BY ID (ADMIN)
-===================================================== */
+
+
+//GET TEST BY ID (ADMIN)
 router.get('/:id', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
@@ -164,9 +160,7 @@ router.get('/:id', protect, restrictTo(['admin']), async (req, res) => {
 
 
 
-/* =====================================================
-   UPDATE TEST (ADMIN)
-===================================================== */
+//UPDATE TEST (ADMIN)
 router.put('/:id', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
@@ -192,9 +186,8 @@ router.put('/:id', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-/* =====================================================
-   DELETE TEST (ADMIN)
-===================================================== */
+
+//DELETE TEST (ADMIN)
 router.delete('/:id', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
@@ -219,46 +212,72 @@ router.delete('/:id', protect, restrictTo(['admin']), async (req, res) => {
   }
 });
 
-/* =====================================================
-   ASSIGN BATCHES (ADMIN)
-===================================================== */
-router.patch(
-  '/:id/assign-batches',
-  protect,
-  restrictTo(['admin']),
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { batchIds } = req.body;
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: 'Invalid test id' });
-      }
+//ASSIGN BATCHES TO TEST
+router.patch('/:id/assign-batches', protect, restrictTo(['admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { batchIds, mode = "add" } = req.body;
 
-      if (!Array.isArray(batchIds)) {
-        return res.status(400).json({ message: 'batchIds must be an array' });
-      }
-
-      // Validate batches exist
-      const batches = await Batch.find({ _id: { $in: batchIds } }).select('_id');
-      const validBatchIds = batches.map(b => b._id);
-
-      const test = await TestSet.findOneAndUpdate(
-        { _id: id, createdBy: req.user._id },
-        { assignedBatches: validBatchIds },
-        { new: true }
-      ).lean();
-
-      if (!test) {
-        return res.status(404).json({ message: 'Test not found' });
-      }
-
-      return res.json({ message: 'Batches assigned', test });
-    } catch (err) {
-      console.error('Assign batches error:', err);
-      return res.status(500).json({ message: 'Server error assigning batches' });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid test id" });
     }
+
+    if (!Array.isArray(batchIds) || batchIds.length === 0) {
+      return res.status(400).json({ message: "batchIds must be a non-empty array" });
+    }
+
+    // Normalize batch IDs
+    const normalizedBatchIds = batchIds
+      .filter((bid) => mongoose.Types.ObjectId.isValid(bid))
+      .map((bid) => new mongoose.Types.ObjectId(bid));
+
+    if (normalizedBatchIds.length === 0) {
+      return res.status(400).json({ message: "No valid batchIds provided" });
+    }
+
+    let updateQuery = {};
+
+    if (mode === "remove") {
+      // REMOVE batches
+      updateQuery = {
+        $pull: {
+          assignedBatches: { $in: normalizedBatchIds },
+        },
+      };
+    } else {
+      // ADD batches (default)
+      updateQuery = {
+        $addToSet: {
+          assignedBatches: { $each: normalizedBatchIds },
+        },
+      };
+    }
+
+    const test = await TestSet.findOneAndUpdate(
+      { _id: id, createdBy: req.user._id },
+      updateQuery,
+      { new: true }
+    ).populate("assignedBatches", "name section year");
+
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    return res.json({
+      message:
+        mode === "remove"
+          ? "Batch removed successfully"
+          : "Batches assigned successfully",
+      test,
+    });
+  } catch (err) {
+    console.error("Assign/remove batches error:", err);
+    return res.status(500).json({
+      message: "Server error updating batch assignments",
+    });
   }
+}
 );
 
 
@@ -374,91 +393,86 @@ router.get(
 
 // GET SUBMISSIONS (ADMIN SCORE CARD)
 //  GET /admin/testSet/:testId/batch/:batchId/submissions
+router.get("/:testId/batch/:batchId/submissions", protect, restrictTo(["admin"]), async (req, res) => {
+  try {
+    const { testId, batchId } = req.params;
 
-router.get(
-  "/:testId/batch/:batchId/submissions",
-  protect,
-  restrictTo(["admin"]),
-  async (req, res) => {
-    try {
-      const { testId, batchId } = req.params;
-
-      if (
-        !mongoose.Types.ObjectId.isValid(testId) ||
-        !mongoose.Types.ObjectId.isValid(batchId)
-      ) {
-        return res.status(400).json({ message: "Invalid ids" });
-      }
-
-      // 1️⃣ Verify test ownership
-      const test = await TestSet.findOne({
-        _id: testId,
-        createdBy: req.user._id,
-      })
-        .select("_id type")
-        .lean();
-
-      if (!test) {
-        return res.status(404).json({ message: "Test not found" });
-      }
-
-      // 2️⃣ Get batch students
-      const batch = await Batch.findById(batchId)
-        .select("students")
-        .lean();
-
-      if (!batch) {
-        return res.status(404).json({ message: "Batch not found" });
-      }
-
-      if (!batch.students || batch.students.length === 0) {
-        return res.json([]);
-      }
-
-      // 3️⃣ Fetch submissions ONLY for test skill
-      const submissions = await Submission.find({
-        testSet: testId,
-        skill: test.type, // 🔑 VERY IMPORTANT
-        student: { $in: batch.students },
-      })
-        .populate("student", "name email systemId")
-        .sort({ createdAt: -1 })
-        .lean();
-
-      // 4️⃣ Normalize for frontend
-      const result = submissions.map((s) => ({
-        _id: s._id,
-
-        student: {
-          _id: s.student?._id,
-          name: s.student?.name || "Unknown",
-          email: s.student?.email || "",
-          systemId: s.student?.systemId || "",
-        },
-
-        status: s.status,
-
-        totalMarks: s.totalMarks || 0,
-        maxMarks: s.maxMarks || 0,
-
-        bandScore:
-          typeof s.bandScore === "number" ? s.bandScore : null,
-
-        correctCount: s.correctCount ?? 0,
-        incorrectCount: s.incorrectCount ?? 0,
-        unattemptedCount: s.unattemptedCount ?? 0,
-
-        createdAt: s.createdAt,
-      }));
-
-      return res.json(result);
-    } catch (err) {
-      console.error("Admin submissions error:", err);
-      return res.status(500).json({
-        message: "Server error fetching submissions",
-      });
+    if (
+      !mongoose.Types.ObjectId.isValid(testId) ||
+      !mongoose.Types.ObjectId.isValid(batchId)
+    ) {
+      return res.status(400).json({ message: "Invalid ids" });
     }
+
+    // Verify test ownership
+    const test = await TestSet.findOne({
+      _id: testId,
+      createdBy: req.user._id,
+    })
+      .select("_id type")
+      .lean();
+
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Get batch students
+    const batch = await Batch.findById(batchId)
+      .select("students")
+      .lean();
+
+    if (!batch) {
+      return res.status(404).json({ message: "Batch not found" });
+    }
+
+    if (!batch.students || batch.students.length === 0) {
+      return res.json([]);
+    }
+
+    // Fetch submissions ONLY for test skill
+    const submissions = await Submission.find({
+      testSet: testId,
+      skill: test.type, 
+      student: { $in: batch.students },
+    })
+      .populate("student", "name email systemId")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Normalize for frontend
+    const result = submissions.map((s) => ({
+      _id: s._id,
+
+      student: {
+        _id: s.student?._id,
+        name: s.student?.name || "Unknown",
+        email: s.student?.email || "",
+        systemId: s.student?.systemId || "",
+      },
+
+      status: s.status,
+
+      totalMarks: s.totalMarks || 0,
+      maxMarks: s.maxMarks || 0,
+
+      bandScore:
+        typeof s.bandScore === "number" ? s.bandScore : null,
+
+      correctCount: s.correctCount ?? 0,
+      incorrectCount: s.incorrectCount ?? 0,
+      unattemptedCount: s.unattemptedCount ?? 0,
+
+      createdAt: s.createdAt,
+    }));
+
+    return res.json(result);
+  } catch (err) {
+    console.error("Admin submissions error:", err);
+    return res.status(500).json({
+      message: "Server error fetching submissions",
+    });
   }
+}
 );
 
 

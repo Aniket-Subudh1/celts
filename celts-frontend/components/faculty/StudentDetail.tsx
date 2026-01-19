@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import api from "@/lib/api";
+import { usePagination } from "@/hooks/usePagination";
 
 /* ===================== TYPES ===================== */
 
@@ -68,6 +69,8 @@ interface Batch {
 /* ===================== COMPONENT ===================== */
 
 export function StudentDetail() {
+  const pagination = usePagination({ initialLimit: 10 });
+
   const [summary, setSummary] = useState<FacultyStatsSummary | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -191,6 +194,23 @@ export function StudentDetail() {
     URL.revokeObjectURL(url);
   }
 
+  useEffect(() => {
+  pagination.reset();
+}, [selectedBatchId, searchTerm]);
+
+
+useEffect(() => {
+  pagination.setTotal(filteredStudents.length);
+}, [filteredStudents, pagination]);
+
+
+const paginatedStudents = useMemo(() => {
+  const start = (pagination.page - 1) * pagination.limit;
+  const end = start + pagination.limit;
+  return filteredStudents.slice(start, end);
+}, [filteredStudents, pagination.page, pagination.limit]);
+
+
   return (
     <div className="space-y-6">
       {/* ================= KPI CARDS ================= */}
@@ -269,7 +289,7 @@ export function StudentDetail() {
             </tr>
           </thead>
           <tbody>
-            {filteredStudents.map((s) => (
+            { paginatedStudents.map((s) => (
               <tr key={s.id} className="border-t hover:bg-muted/30">
                 <td className="px-4 py-3 font-medium">{s.name}</td>
                 <td className="px-4 py-3">{s.email}</td>
@@ -286,6 +306,54 @@ export function StudentDetail() {
             ))}
           </tbody>
         </table>
+
+
+
+
+
+        <div className="flex flex-col px-3 md:flex-row md:items-center md:justify-between gap-3">
+
+    {/* LEFT: Info */}
+    <div className="text-sm text-muted-foreground">
+      Page{" "}
+      <span className="font-semibold text-foreground">
+        {pagination.page}
+      </span>{" "}
+      of{" "}
+      <span className="font-semibold text-foreground">
+        {Math.max(Math.ceil(pagination.total / pagination.limit), 1)}
+      </span>{" "}
+      • Total students:{" "}
+      <span className="font-semibold text-foreground">
+        {pagination.total}
+      </span>
+    </div>
+
+    {/* RIGHT: Controls */}
+    <div className="flex items-center gap-2">
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!pagination.hasPrev}
+        onClick={pagination.prevPage}
+      >
+        Previous
+      </Button>
+
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!pagination.hasNext}
+        onClick={pagination.nextPage}
+      >
+        Next
+      </Button>
+    </div>
+  </div>
+
+
+
+
       </Card>
     </div>
   );

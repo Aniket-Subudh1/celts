@@ -87,8 +87,16 @@ export function ViewAdminTest() {
 
   const [batches, setBatches] = useState<Batch[]>([]);
   const [assigningTest, setAssigningTest] = useState<TestSet | null>(null);
-  const [assignSelected, setAssignSelected] = useState<string | null>(null);
+  const [assignSelected, setAssignSelected] = useState<string[]>([]);
+  const [batchSearch, setBatchSearch] = useState("");
+
   const [assignLoading, setAssignLoading] = useState(false);
+
+  const [removeBatchTest, setRemoveBatchTest] = useState<TestSet | null>(null);
+  const [removeSelected, setRemoveSelected] = useState<string[]>([]);
+  const [removeSearch, setRemoveSearch] = useState("");
+  const [removeLoading, setRemoveLoading] = useState(false);
+
 
   const [viewingTest, setViewingTest] = useState<TestSet | null>(null);
   const [editedQuestions, setEditedQuestions] = useState<Question[]>([]);
@@ -134,7 +142,11 @@ export function ViewAdminTest() {
         setBatches([]);
         return;
       }
-      const raw = res.data;
+      const raw = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.data)
+          ? res.data.data
+          : [];
       const normalized: Batch[] = (Array.isArray(raw) ? raw : []).map(
         (r: any, i: number) => {
           if (!r) return { _id: String(i), name: String(r) };
@@ -158,7 +170,8 @@ export function ViewAdminTest() {
 
   const openAssignDialog = (t: TestSet) => {
     setAssigningTest(t);
-    setAssignSelected(null);
+    setAssignSelected([]);
+    setBatchSearch("");
   };
 
   const handleAssignToBatch = async () => {
@@ -171,7 +184,7 @@ export function ViewAdminTest() {
 
       console.log("[Assign] update test", assigningTest._id, newAssigned);
 
-      const res = await api.apiPatch(`/admin/testSet/${assigningTest._id}/assign-batches`, { batchIds: newAssigned });
+      const res = await api.apiPatch(`/admin/testSet/${assigningTest._id}/assign-batches`, { batchIds: assignSelected });
 
       setAssignLoading(false);
 
@@ -208,7 +221,7 @@ export function ViewAdminTest() {
       const newAssigned = (test.assignedBatches || []).filter(
         (b) => b !== batchId
       );
-      const res = await api.apiPatch(`/admin/testSet/${test._id}/assign-batches`, { batchIds: newAssigned });
+      const res = await api.apiPatch(`/admin/testSet/${test._id}/assign-batches`, { batchIds: [batchId], mode: "remove", });
 
       if (!res.ok) {
         console.error("[removeBatch] server error:", res);
@@ -729,6 +742,26 @@ export function ViewAdminTest() {
 
   const sectionOptions = getSectionOptions(viewingTest);
 
+  const filteredBatches = batches.filter((b) =>
+    b.name.toLowerCase().includes(batchSearch.toLowerCase())
+  );
+
+
+  const assignedBatchIds: string[] = Array.isArray(
+    removeBatchTest?.assignedBatches
+  )
+    ? removeBatchTest!.assignedBatches.map((b: any) =>
+      typeof b === "string" ? b : b._id
+    )
+    : [];
+  const assignedBatchList = batches.filter((b) =>
+    assignedBatchIds.includes(b._id)
+  );
+  const filteredRemoveBatches = assignedBatchList.filter((b) =>
+    b.name.toLowerCase().includes(removeSearch.toLowerCase())
+  );
+
+
   return (
     <div className="space-y-6">
       <div>
@@ -786,33 +819,18 @@ export function ViewAdminTest() {
                   </td>
                   <td className="px-6 py-4 text-sm">{test.type}</td>
                   <td className="px-6 py-4 text-sm">
-                    {test.assignedBatches &&
-                      test.assignedBatches.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {test.assignedBatches.map((batch: any) => {
-                          const batchId = typeof batch === "string" ? batch : batch._id;
-                          const batchName =
-                            typeof batch === "string"
-                              ? batches.find((b) => b._id === batch)?.name || batch
-                              : batch.name;
-
-                          return (
-                            <span
-                              key={batchId}
-                              className="px-2 py-1 rounded bg-secondary text-secondary-foreground text-xs"
-                            >
-                              {batchName}
-                              <button
-                                className="ml-2 text-xs"
-                                onClick={() => handleRemoveBatchFromTest(test, batchId)}
-                              >
-                                ×
-                              </button>
-                            </span>
-                          );
-                        })}
-
-                      </div>
+                    {test.assignedBatches && test.assignedBatches.length > 0 ? (
+                      <button
+                        className="flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                        onClick={() => {
+                          setRemoveBatchTest(test);
+                          setRemoveSelected([]);
+                          setRemoveSearch("");
+                        }}
+                      >
+                        {test.assignedBatches.length} batches
+                        <span className="text-xs">▼</span>
+                      </button>
                     ) : (
                       <span className="text-sm text-muted-foreground">
                         Not assigned
@@ -835,7 +853,7 @@ export function ViewAdminTest() {
                       variant="outline"
                       onClick={() =>
                         router.push(
-                          `/faculty/proctorLogs?testId=${test._id}`
+                          `/admin/proctorLogs?testId=${test._id}`
                         )
                       }
                     >
@@ -860,30 +878,84 @@ export function ViewAdminTest() {
       </Card>
 
       {/* ASSIGN DIALOG */}
-      <Dialog open={!!assigningTest} onOpenChange={() => setAssigningTest(null)}>
-        <DialogContent>
+      <Dialog
+        open={!!assigningTest}
+        onOpenChange={() => {
+          setAssigningTest(null);
+          setAssignSelected([]);
+          setBatchSearch("");
+        }}
+      >
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Assign Test to Batch</DialogTitle>
+            <DialogTitle>Assign Test to Batches</DialogTitle>
           </DialogHeader>
 
-          <div className="py-2 space-y-3">
+          <div className="py-2 space-y-4">
+            {/* Search */}
             <div>
-              <label className="text-sm block mb-1">Select Batch</label>
-              <select
-                className="w-full p-2 border rounded"
-                value={assignSelected ?? ""}
-                onChange={(e) =>
-                  setAssignSelected(e.target.value || null)
+              <label className="text-sm block mb-1">Search batches</label>
+              <Input
+                placeholder="Type to search..."
+                value={batchSearch}
+                onChange={(e) => setBatchSearch(e.target.value)}
+              />
+            </div>
+
+            {/* Select all / clear */}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setAssignSelected(filteredBatches.map((b) => b._id))
                 }
               >
-                <option value="">-- Select batch --</option>
-                {batches.map((b) => (
-                  <option key={b._id} value={b._id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+                Select All
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAssignSelected([])}
+              >
+                Clear All
+              </Button>
             </div>
+
+            {/* Batch list */}
+            <div className="max-h-60 overflow-auto border rounded p-2 space-y-2">
+              {filteredBatches.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No batches found
+                </div>
+              ) : (
+                filteredBatches.map((b) => (
+                  <label
+                    key={b._id}
+                    className="flex items-center gap-2 text-sm cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={assignSelected.includes(b._id)}
+                      onChange={(e) => {
+                        setAssignSelected((prev) =>
+                          e.target.checked
+                            ? [...prev, b._id]
+                            : prev.filter((id) => id !== b._id)
+                        );
+                      }}
+                    />
+                    {b.name}
+                  </label>
+                ))
+              )}
+            </div>
+
+            <div className="text-xs text-muted-foreground">
+              Selected batches: {assignSelected.length}
+            </div>
+
             <div>
               <small className="text-muted-foreground">
                 Selected test: <strong>{assigningTest?.title}</strong>
@@ -892,11 +964,19 @@ export function ViewAdminTest() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAssigningTest(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAssigningTest(null);
+                setAssignSelected([]);
+                setBatchSearch("");
+              }}
+            >
               Cancel
             </Button>
+
             <Button
-              disabled={assignLoading || !assignSelected}
+              disabled={assignLoading || assignSelected.length === 0}
               onClick={handleAssignToBatch}
             >
               {assignLoading ? "Assigning..." : "Assign"}
@@ -904,6 +984,127 @@ export function ViewAdminTest() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={!!removeBatchTest}
+        onOpenChange={() => {
+          setRemoveBatchTest(null);
+          setRemoveSelected([]);
+          setRemoveSearch("");
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Remove Batches ({removeBatchTest?.title})
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Search */}
+          <Input
+            placeholder="Search assigned batches..."
+            value={removeSearch}
+            onChange={(e) => setRemoveSearch(e.target.value)}
+          />
+
+          {/* Select all / clear */}
+          <div className="flex gap-2 mt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setRemoveSelected(filteredRemoveBatches.map((b) => b._id))
+              }
+            >
+              Select All
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setRemoveSelected([])}
+            >
+              Clear All
+            </Button>
+          </div>
+
+          {/* Batch list */}
+          <div className="mt-3 max-h-60 overflow-auto border rounded p-2 space-y-2">
+            {filteredRemoveBatches.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                No assigned batches
+              </div>
+            ) : (
+              filteredRemoveBatches.map((b) => (
+                <label
+                  key={b._id}
+                  className="flex items-center gap-2 text-sm cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={removeSelected.includes(b._id)}
+                    onChange={(e) => {
+                      setRemoveSelected((prev) =>
+                        e.target.checked
+                          ? [...prev, b._id]
+                          : prev.filter((id) => id !== b._id)
+                      );
+                    }}
+                  />
+                  {b.name}
+                </label>
+              ))
+            )}
+          </div>
+
+          <div className="text-xs text-muted-foreground">
+            Selected: {removeSelected.length}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRemoveBatchTest(null)}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              variant="destructive"
+              disabled={removeLoading || removeSelected.length === 0}
+              onClick={async () => {
+                if (!removeBatchTest) return;
+
+                if (
+                  !confirm(
+                    `Remove ${removeSelected.length} batch(es) from this test?`
+                  )
+                )
+                  return;
+
+                setRemoveLoading(true);
+
+                await api.apiPatch(
+                  `/admin/testSet/${removeBatchTest._id}/assign-batches`,
+                  {
+                    batchIds: removeSelected,
+                    mode: "remove",
+                  }
+                );
+
+                await fetchTests();
+
+                setRemoveLoading(false);
+                setRemoveBatchTest(null);
+                setRemoveSelected([]);
+              }}
+            >
+              {removeLoading ? "Removing..." : "Remove Selected"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* QUESTIONS DIALOG */}
       <Dialog open={!!viewingTest} onOpenChange={() => setViewingTest(null)}>

@@ -190,10 +190,19 @@ export function ViewTest() {
         setLoading(false);
         return;
       }
-      const data: TestsResponse = res.data;
-      setTests(data.tests || []);
-      if (data.tests && data.tests.length > 0 && !selectedId) {
-        setSelectedId(data.tests[0]._id);
+      const raw =
+        Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.tests)
+            ? res.data.tests
+            : Array.isArray(res.data?.data)
+              ? res.data.data
+              : [];
+
+      setTests(raw);
+
+      if (raw.length > 0 && !selectedId) {
+        setSelectedId(raw[0]._id);
       }
     } catch (err: any) {
       console.error("[ViewTest] fetch error:", err);
@@ -316,9 +325,8 @@ export function ViewTest() {
               key={t._id}
               type="button"
               onClick={() => setSelectedId(t._id)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm border hover:bg-muted transition ${
-                selectedId === t._id ? "bg-muted border-primary/60" : "border-transparent"
-              }`}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm border hover:bg-muted transition ${selectedId === t._id ? "bg-muted border-primary/60" : "border-transparent"
+                }`}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium truncate">{t.title}</span>
@@ -391,10 +399,10 @@ export function ViewTest() {
                         </>
                       )}
                   </p>
-                  
+
                   <div className="mt-3">
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => router.push(`/admin/proctorLogs?testId=${selectedTest._id}`)}
                       className="gap-2"
@@ -643,7 +651,7 @@ function QuestionCard({ q, index }: { q: Question; index: number }) {
           {typeof q.marks === "number" && (
             <div>Marks: {q.marks}</div>
           )}
-          
+
         </div>
       </div>
 
@@ -660,8 +668,8 @@ function QuestionCard({ q, index }: { q: Question; index: number }) {
                 <div
                   key={i}
                   className={`text-xs border rounded px-2 py-1 ${isCorrect
-                      ? "border-green-500/60 bg-green-50"
-                      : "border-muted bg-muted/40"
+                    ? "border-green-500/60 bg-green-50"
+                    : "border-muted bg-muted/40"
                     }`}
                 >
                   <span className="font-semibold mr-1">
@@ -732,8 +740,8 @@ function QuestionCard({ q, index }: { q: Question; index: number }) {
                   <div
                     key={i}
                     className={`text-xs border rounded px-2 py-1 ${isCorrect
-                        ? "border-green-500/60 bg-green-50"
-                        : "border-muted bg-muted/40"
+                      ? "border-green-500/60 bg-green-50"
+                      : "border-muted bg-muted/40"
                       }`}
                   >
                     <span className="font-semibold mr-1">
