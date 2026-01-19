@@ -4,6 +4,7 @@ const Submission = require('../models/Submission');
 
 let submissionQueue = null;
 let usingRedis = false;
+let healthCheckInterval = null;
 
 async function persistFailedJob(job, error) {
   try {
@@ -55,12 +56,6 @@ if (process.env.REDIS_URL && redisClient) {
         drainDelay: 5,
       },
 
-      redis: {
-        maxRetriesPerRequest: 3,
-        enableReadyCheck: true,
-        enableOfflineQueue: false, 
-      },
-
       prefix: 'celts:queue',
     });
     usingRedis = true;
@@ -68,6 +63,13 @@ if (process.env.REDIS_URL && redisClient) {
     submissionQueue.on('error', (err) => {
       if (err.code === 'ECONNRESET') {
         console.warn('[Queue] Redis connection reset (this is usually normal during Redis restart)');
+      } else if (err.code === 'ENOTFOUND' || err.message?.includes('ENOTFOUND')) {
+
+        if (!submissionQueue._dnsErrorLogged) {
+          console.error('[Queue] Cannot connect to Redis:', err.message);
+          console.warn('[Queue] Using inline processing mode instead');
+          submissionQueue._dnsErrorLogged = true;
+        }
       } else {
         console.error('[Queue] Error:', err.message);
       }
@@ -207,7 +209,6 @@ async function addSubmissionJob(jobData, priority = 'normal') {
   return submissionQueue.add(jobData, options);
 }
 
-// Graceful shutdown
 async function closeQueue() {
   console.log('[Queue] Closing queue gracefully...');
   
