@@ -9,7 +9,7 @@ const TestSet = require('../models/TestSet');
 const TestAttempt = require('../models/TestAttempt');
 const Batch = require('../models/Batch');
 const StudentStats = require('../models/StudentStats');
-const { submissionQueue } = require('../services/queue');
+const { submissionQueue, addSubmissionJob } = require('../services/queue');
 const uploadStudentMedia = require('../services/uploadStudentMedia');
 const { paginate } = require("../utils/pagination");
 
@@ -281,7 +281,10 @@ router.post(
         geminiEvaluation: null,
       });
 
-      await submissionQueue.add({
+      console.log(`[Submission] Speaking submission created - ID: ${submission._id}, Student: ${req.user.email}`);
+      console.log(`[Submission] Media files received: ${Object.keys(mediaPaths).length}, Questions: ${testSet.questions.filter(q => q.questionType === "speaking").length}`);
+
+      await addSubmissionJob({
         submissionId: submission._id.toString(),
         studentId: req.user._id.toString(),
         testId: testSet._id.toString(),
@@ -811,18 +814,26 @@ router.post('/submit/:testId/:skill', protect, restrictTo(['student']), [body('r
 
       const submission = await Submission.create(submissionPayload);
 
-      // Queue job only for non-auto-gradable skills (writing/speaking)
+      console.log(`[Submission] ${skill.toUpperCase()} submission created - ID: ${submission._id}, Student: ${req.user.email}`);
+      console.log(`[Submission] Status: ${submission.status}, Auto-gradable: ${autoGradable}`);
+      if (autoGradable) {
+        console.log(`[Submission] Auto-graded - Band: ${submission.bandScore}, Marks: ${submission.totalMarks}/${submission.maxMarks}`);
+      }
+
       let jobId = null;
       if (!autoGradable) {
+        console.log(`[Submission] Queuing ${skill} test for async grading...`);
         const jobData = {
           submissionId: submission._id.toString(),
           studentId: req.user._id.toString(),
           testId: testSet._id.toString(),
           skill,
           response,
+          mediaPaths: {}, 
         };
-        const job = await submissionQueue.add(jobData);
+        const job = await addSubmissionJob(jobData);
         jobId = job.id || null;
+        console.log(`[Submission] ✓ Job ${jobId} created for submission ${submission._id}`);
       }
 
     // Update StudentStats (only when we have a bandScore)
