@@ -198,6 +198,7 @@ function TestRunnerContent() {
   const [hasStarted, setHasStarted] = useState(false);
   const [startAttempting, setStartAttempting] = useState(false);
   const [attemptId, setAttemptId] = useState<string | null>(null);
+  const cleanupAttemptedRef = useRef(false);
 
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -715,8 +716,10 @@ function TestRunnerContent() {
         const errorMessage = startRes.error?.message || "Failed to start test attempt";
 
         if (errorMessage.includes("already in progress")) {
-          if (startRes.data?.existingAttempt) {
-            const existingAttemptId = startRes.data.existingAttempt.attemptId;
+          // Check for existing attempt in error response
+          const existingAttempt = startRes.error?.existingAttempt;
+          if (existingAttempt?.attemptId) {
+            const existingAttemptId = existingAttempt.attemptId;
             setAttemptId(existingAttemptId);
             setHasStarted(true);
             toast.success("Resumed Test", {
@@ -724,6 +727,20 @@ function TestRunnerContent() {
               duration: 3000,
             });
             setStartAttempting(false);
+            cleanupAttemptedRef.current = false; // Reset cleanup flag
+            return;
+          }
+
+          // Prevent infinite cleanup loop
+          if (cleanupAttemptedRef.current) {
+            toast.error("Session Conflict", {
+              description: "Unable to start test. Please refresh the page and try again.",
+              duration: 5000,
+            });
+            setStartAttempting(false);
+            setTimeout(() => {
+              window.location.reload();
+            }, 2000);
             return;
           }
 
@@ -732,6 +749,8 @@ function TestRunnerContent() {
             duration: 2000,
           });
 
+          cleanupAttemptedRef.current = true; // Mark that we've attempted cleanup
+          
           try {
             await api.apiPost(`/student/tests/${testId}/cleanup`, {});
             setTimeout(() => {
@@ -769,6 +788,7 @@ function TestRunnerContent() {
 
       setAttemptId(startRes.data.attemptId);
       console.log("Test attempt started:", startRes.data);
+      cleanupAttemptedRef.current = false; // Reset cleanup flag on successful start
 
       if (sessionToken) {
         try {

@@ -490,11 +490,9 @@ router.post('/tests/:id/start', protect, restrictTo(['student']), async (req, re
       return res.status(409).json({
         message: 'Test already in progress',
         code: 'TEST_IN_PROGRESS',
-        data: {
-          existingAttempt: {
-            attemptId: existingAttempt._id,
-            startedAt: existingAttempt.startedAt
-          }
+        existingAttempt: {
+          attemptId: existingAttempt._id,
+          startedAt: existingAttempt.startedAt
         }
       });
     }
@@ -1093,28 +1091,29 @@ router.post('/tests/:id/cleanup', protect, restrictTo(['student']), async (req, 
     const { id } = req.params;
     const userId = req.user._id;
 
-    // Find any stale attempts (started more than 6 hours ago)
-    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+  
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
-    const staleAttempts = await TestAttempt.find({
+    const startedAttempts = await TestAttempt.find({
       student: userId,
       testSet: id,
-      status: 'started',
-      startTime: { $lt: sixHoursAgo }
+      status: 'started'
     });
 
-    if (staleAttempts.length > 0) {
-      // Mark as abandoned
+    if (startedAttempts.length > 0) {
+      // Mark all as abandoned
       await TestAttempt.updateMany(
         {
           student: userId,
           testSet: id,
-          status: 'started',
-          startTime: { $lt: sixHoursAgo }
+          status: 'started'
         },
         {
-          status: 'abandoned',
-          endTime: new Date()
+          $set: {
+            status: 'abandoned',
+            completedAt: new Date(),
+            exitReason: 'manual_exit'
+          }
         }
       );
 
@@ -1127,20 +1126,22 @@ router.post('/tests/:id/cleanup', protect, restrictTo(['student']), async (req, 
           status: 'active'
         },
         {
-          status: 'terminated',
-          terminationReason: 'cleanup'
+          $set: {
+            status: 'terminated',
+            terminationReason: 'cleanup'
+          }
         }
       );
 
       res.json({
         success: true,
-        message: `Cleaned up ${staleAttempts.length} stale attempt(s)`,
-        cleanedAttempts: staleAttempts.length
+        message: `Cleaned up ${startedAttempts.length} attempt(s)`,
+        cleanedAttempts: startedAttempts.length
       });
     } else {
       res.json({
         success: true,
-        message: 'No stale attempts found',
+        message: 'No attempts to clean up',
         cleanedAttempts: 0
       });
     }
@@ -1148,7 +1149,7 @@ router.post('/tests/:id/cleanup', protect, restrictTo(['student']), async (req, 
     console.error('Cleanup error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to cleanup stale attempts',
+      message: 'Failed to cleanup attempts',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
