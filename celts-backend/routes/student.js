@@ -454,6 +454,104 @@ router.get('/tests/:id/attempts', protect, restrictTo(['student']), async (req, 
   }
 });
 
+// POST /api/student/tests/:id/start - Start a test attempt
+router.post('/tests/:id/start', protect, restrictTo(['student']), async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ message: 'Invalid test id' });
+  }
+
+  try {
+    const studentId = req.user._id;
+
+    // Check if test exists
+    const testSet = await TestSet.findById(id);
+    if (!testSet) {
+      return res.status(404).json({ message: 'Test not found' });
+    }
+
+    // Check if student can start this test
+    const allowed = await canStudentStart(testSet, req.user);
+    if (!allowed) {
+      return res.status(403).json({ 
+        message: 'Test is not available at this time',
+        code: 'TEST_NOT_AVAILABLE'
+      });
+    }
+
+    // Check for existing active attempt
+    const existingAttempt = await TestAttempt.findOne({
+      student: studentId,
+      testSet: id,
+      status: 'started'
+    });
+
+    if (existingAttempt) {
+      return res.status(409).json({
+        message: 'Test already in progress',
+        code: 'TEST_IN_PROGRESS',
+        data: {
+          existingAttempt: {
+            attemptId: existingAttempt._id,
+            startedAt: existingAttempt.startedAt
+          }
+        }
+      });
+    }
+
+    // Check if student has already completed this test (and retry is not allowed)
+    const completedAttempt = await TestAttempt.findOne({
+      student: studentId,
+      testSet: id,
+      status: { $in: ['completed', 'abandoned', 'violation_exit'] }
+    }).sort({ attemptNumber: -1 });
+
+    if (completedAttempt && !completedAttempt.isRetryAllowed) {
+      return res.status(403).json({
+        message: 'You have already attempted this test',
+        code: 'TEST_ALREADY_COMPLETED',
+        data: {
+          lastAttempt: {
+            status: completedAttempt.status,
+            completedAt: completedAttempt.completedAt,
+            canRetry: false
+          }
+        }
+      });
+    }
+
+    // Determine attempt number
+    const allAttempts = await TestAttempt.find({
+      student: studentId,
+      testSet: id
+    }).sort({ attemptNumber: -1 });
+
+    const attemptNumber = allAttempts.length > 0 ? allAttempts[0].attemptNumber + 1 : 1;
+
+    // Create new test attempt
+    const testAttempt = new TestAttempt({
+      student: studentId,
+      testSet: id,
+      attemptNumber,
+      status: 'started',
+      startedAt: new Date()
+    });
+
+    await testAttempt.save();
+
+    return res.status(201).json({
+      message: 'Test attempt started successfully',
+      attemptId: testAttempt._id,
+      attemptNumber: testAttempt.attemptNumber,
+      startedAt: testAttempt.startedAt
+    });
+
+  } catch (err) {
+    console.error('[POST /student/tests/:id/start] error:', err);
+    return res.status(500).json({ message: 'Server error starting test' });
+  }
+});
+
 // POST /api/student/tests/:id/end - End a test attempt
 router.post('/tests/:id/end', protect, restrictTo(['student']), async (req, res) => {
   const { id } = req.params;
