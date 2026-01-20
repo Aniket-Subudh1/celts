@@ -527,7 +527,6 @@ router.post('/exam/submit', protect, async (req, res) => {
       });
     }
 
-    // Get exam security record
     const examSecurity = await ExamSecurity.findOne({
       testAttempt: attemptId,
       student: userId
@@ -570,7 +569,6 @@ router.post('/exam/submit', protect, async (req, res) => {
       }
     );
 
-    // Clear any active timers
     examTimerService.clearTimers(attemptId);
 
     res.json({
@@ -658,8 +656,6 @@ router.post('/violation', rateLimit, protect, async (req, res) => {
     const criticalViolations = examSecurity.violations.filter(v => v.severity === 'critical').length;
     const highViolations = examSecurity.violations.filter(v => v.severity === 'high').length;
     
-    // Log violations but do not auto-terminate
-    // Faculty can review violations and take action if needed
     if (examSecurity.securityScore < 30) {
       examSecurity.securityStatus = 'violated';
       await examSecurity.save();

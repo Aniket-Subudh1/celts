@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { navItems } from '@/components/admin/NavItems';
-import { CreateAdminTest } from '@/components/admin/CreateAdminTest';
+import { CreateAdminTest } from '@/components/admin/createAdminTest';
 export default async function CreateAdminTestPage() {
     
   return (

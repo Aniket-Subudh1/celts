@@ -117,7 +117,7 @@ export function BatchManagement() {
           s.name.toLowerCase().includes(q) ||
           s.systemId?.toLowerCase().includes(q)
       )
-      .slice(0, 20); // limit results for UX
+      .slice(0, 20); 
   }, [studentAssignSearch, studentOptions]);
 
   const handleSelectAllVisible = () => {
@@ -163,7 +163,7 @@ export function BatchManagement() {
 
   async function fetchFacultyOptions() {
     try {
-      const res = await api.apiGet("/admin/users?role=faculty");
+      const res = await api.apiGet("/admin/users?role=faculty&all=true");
       if (!res.ok) return;
       const list = Array.isArray(res.data?.data) ? res.data.data : [];
       const opts = list.map((u: any) => ({
@@ -177,7 +177,7 @@ export function BatchManagement() {
 
   async function fetchStudentOptions() {
     try {
-      const res = await api.apiGet("/admin/users?role=student");
+      const res = await api.apiGet("/admin/users?role=student&all=true");
       if (!res.ok) return;
       const list = Array.isArray(res.data?.data) ? res.data.data : [];
       const opts = list.map((u: any) => ({

@@ -1,4 +1,3 @@
-// routes/adminAssignments.js
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -70,13 +69,13 @@ router.get('/faculty/:facultyId/students', protect, restrictTo(['admin','faculty
   const facultyId = req.params.facultyId;
   if (!isValidId(facultyId)) return res.status(400).json({ message: 'invalid id' });
   try {
-    // const faculty = await User.findById(facultyId).select('-password').populate('students','name email cohort');
+
     const faculty = await User.findById(facultyId) .select('_id name cohort role students').lean();
 
     if (!faculty || faculty.role !== 'faculty') return res.status(404).json({ message: 'Faculty not found' });
     if (req.user.role === 'faculty' && req.user._id.toString() !== facultyId) return res.status(403).json({ message: 'Forbidden' });
     
-    //paginate students
+    
       const studentsResult = await paginate(req, User, {
         filter: {
           _id: { $in: faculty.students || [] },
@@ -89,7 +88,6 @@ router.get('/faculty/:facultyId/students', protect, restrictTo(['admin','faculty
 
     return res.json({ faculty: { id: faculty._id, name: faculty.name, cohort: faculty.cohort }, students: studentsResult.data,
 
-        // pagination metadata (non-breaking)
         studentsPagination: {
           page: studentsResult.page,
           limit: studentsResult.limit,

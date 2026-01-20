@@ -23,32 +23,52 @@ const allowedMimes = new Set([
   "audio/wav",
   "audio/x-wav",
   "audio/x-m4a",
+  "audio/m4a",
   "audio/mp4",
   "audio/aac",
   "audio/ogg",
   "audio/webm",
+  "audio/flac",
+  "audio/x-flac",
   "video/mp4",
   "video/webm",
   "video/ogg",
   "video/quicktime", 
   "video/x-matroska",
+  "video/x-msvideo",
   "image/jpeg",
+  "image/jpg",
   "image/png",
   "image/webp",
-  "image/gif"  
+  "image/gif",
+  "application/octet-stream" // For files without proper MIME type
 ]);
 
 // Multer storage factory 
 function createUploader(destinationFolder) {
   return multer({
     storage: multer.memoryStorage(), 
-    limits: { fileSize: 20 * 1024 * 1024 }, 
+    limits: { fileSize: 100 * 1024 * 1024 }, 
     fileFilter: (req, file, cb) => {
+      console.log(`File upload attempt - Name: ${file.originalname}, MIME: ${file.mimetype}`);
+      
+      // Check if MIME type is in allowed list
       if (!allowedMimes.has(file.mimetype)) {
-        const err = new Error("Invalid file type. Audio, Video and Image only.");
-        err.code = "INVALID_FILE_TYPE";
-        return cb(err);
+        // Also check if it starts with audio/, video/, or image/ (more flexible)
+        const isMedia = file.mimetype.startsWith('audio/') || 
+                       file.mimetype.startsWith('video/') || 
+                       file.mimetype.startsWith('image/');
+        
+        if (!isMedia) {
+          const err = new Error(`Invalid file type: ${file.mimetype}. Audio, Video and Image only.`);
+          err.code = "INVALID_FILE_TYPE";
+          console.error(`File rejected - Name: ${file.originalname}, MIME: ${file.mimetype}`);
+          return cb(err);
+        }
+        
+        console.warn(`File accepted with unlisted MIME type: ${file.mimetype}`);
       }
+      
       cb(null, true);
     },
   });
@@ -107,36 +127,17 @@ router.post(
             provider: "S3",
           });
         } catch (s3Error) {
-          console.error(
-            "S3 upload failed, falling back to local storage:",
-            s3Error
-          );
+          console.error("S3 upload failed:", s3Error);
+          return res.status(500).json({ 
+            message: "S3 upload failed. Please check S3 configuration.",
+            error: s3Error.message 
+          });
         }
       }
 
-      // LOCAL STORAGE FALLBACK
-      // const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-
-      // // Use original extension if present; otherwise choose sensible default
-      // let ext = path.extname(req.file.originalname);
-      // if (!ext) {
-      //   ext = isImage ? ".jpg" : ".mp3";
-      // }
-
-      // const filename = `${unique}${ext}`;
-
-      // You currently only have ../uploads/files in this file.
-      // To keep changes minimal, still store images under that path.
-      // const filepath = path.join(adminUploadDir, filename);
-
-      // fs.writeFileSync(filepath, req.file.buffer);
-
-      // const fileUrl = `${req.protocol}://${req.get("host")}/uploads//${filename}`;
-
-      return res.json({
-        message: `${isImage ? "Image" : "Audio"} uploaded successfully`,
-        url: fileUrl,
-        provider: "local",
+     
+      return res.status(500).json({ 
+        message: "S3 storage is not configured properly" 
       });
     } catch (err) {
       console.error("Admin upload error:", err);
@@ -148,46 +149,34 @@ router.post(
 );
 
 
-
-
-// Student upload (audio/video)
 router.post("/upload/student", protect, restrictTo(["student"]), studentUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    if (useS3) {
-      // Upload to S3
-      try {
-        const fileName = req.file.originalname || 'student_submission';
-        const s3Url = await uploadToS3(req.file.buffer, fileName, req.file.mimetype, 'student-submissions');
-        
-        console.log('Student submission uploaded to S3 successfully:', s3Url);
-        return res.json({ 
-          message: "Student submission saved to S3", 
-          url: s3Url,
-          provider: 'S3'
-        });
-      } catch (s3Error) {
-        console.error('S3 upload failed for student, falling back to local storage:', s3Error);
-        // Fall back to local storage if S3 fails
-      }
+    // Upload to S3 only - no local storage
+    if (!useS3) {
+      return res.status(500).json({ 
+        message: "S3 storage is not configured" 
+      });
     }
 
-    // Fallback to local storage (original implementation)
-    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(req.file.originalname) || '.webm';
-    const filename = `${unique}${ext}`;
-    const filepath = path.join(studentUploadDir, filename);
-    
-    // Write buffer to file
-    fs.writeFileSync(filepath, req.file.buffer);
-    
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/studentSubmission/${filename}`;
-    res.json({ 
-      message: "Student submission saved", 
-      url: fileUrl,
-      provider: 'local'
-    });
+    try {
+      const fileName = req.file.originalname || 'student_submission';
+      const s3Url = await uploadToS3(req.file.buffer, fileName, req.file.mimetype, 'student-submissions');
+      
+      console.log('Student submission uploaded to S3 successfully:', s3Url);
+      return res.json({ 
+        message: "Student submission saved to S3", 
+        url: s3Url,
+        provider: 'S3'
+      });
+    } catch (s3Error) {
+      console.error('S3 upload failed for student:', s3Error);
+      return res.status(500).json({ 
+        message: "S3 upload failed. Please try again.",
+        error: s3Error.message 
+      });
+    }
   } catch (err) {
     console.error("Student upload error:", err);
     res.status(500).json({ message: "Error uploading student submission" });
@@ -252,5 +241,5 @@ router.use((err, req, res, next) => {
   }
   next();
 });
-
+10
 module.exports = router;

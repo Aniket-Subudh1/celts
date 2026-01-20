@@ -1,4 +1,3 @@
-// routes/index.js
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -23,19 +22,15 @@ const studentStatsRoutes = require('./studentStats');
 const adminAuditRoutes = require("./adminAudit");
 const securityRoutes = require('./security');
 const testSecurityRoutes = require('./testSecurity');
-const testAttempts = require("../models/TestAttempt");
+const adminRoutes = require('./admin');
 const adminUserRoutes = require('./adminUserRoutes');
 const csvuploadRoutes = require('./adminUserRoutes');
 const adminTestSetsRoutes = require('./adminTestSets');
 
 const { paginate } = require("../utils/pagination");
 
-
-
-// Root health check
 router.get('/', (req, res) => res.json({ message: 'CELTS Backend running successfully!', timestamp: Date.now() }));
 
-// Mount other routers (these files should exist and export a router)
 router.use('/auth', require('./auth'));
 router.use('/admin/assign', adminAssignRoutes);
 router.use('/proctor', proctorRoutes);
@@ -43,15 +38,15 @@ router.use('/media', mediaRoutes);
 router.use('/faculty', facultyRoutes);
 router.use('/student', studentRoutes);
 router.use('/admin/batches', adminBatchRoutes);
-router.use('/teacher/tests', teacherTestsRoutes);  //faculty access
-router.use('/admin/testSet', adminTestSetsRoutes); // admin access
+router.use('/admin/testSet', adminTestSetsRoutes); 
+router.use('/admin/users', adminUserRoutes);
+router.use('/admin/csv', csvuploadRoutes);
+router.use('/teacher/tests', teacherTestsRoutes);  
 router.use('/studentStats', studentStatsRoutes);
-router.use("/admin", adminAuditRoutes);
 router.use('/security', securityRoutes);
-router.use('/test', testSecurityRoutes); // Development/testing only
-router.use('/testAttempts', testAttempts);
-router.use('/admin/users', adminUserRoutes); 
-router.use('/admin/csv',csvuploadRoutes) 
+router.use('/test', testSecurityRoutes);
+router.use('/admin', adminAuditRoutes);
+router.use('/admin', adminRoutes);
 
 
 function isNum(v) {
@@ -59,218 +54,7 @@ function isNum(v) {
 }
 
 
-// ADMIN: Get user
-router.get('/admin/users', protect, restrictTo(['admin']), async (req, res) => {
-  try {
-    const { role } = req.query;
-    const filter = {};
-    if (role) filter.role = role;
-    //const users = await User.find(filter).select('-password').sort({ createdAt: -1 }).lean();
-    //res.json(users);
-    const result = await paginate(req, User, {
-      filter,
-      select: '-password',
-      sort: { createdAt: -1 },
-    });
-    res.json(result);
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error fetching users' });
-  }
-});
-
-
-
-// ADMIN: Create / Onboard user (enhanced with optional immediate assignment)
-router.post('/admin/users', protect, restrictTo(['admin']), async (req, res) => {
-  const { name, email, systemId, password, role, canEditScores = false, assignedFaculty, cohort } = req.body;
-  try {
-    if (!name || !email || !systemId || !password) return res.status(400).json({ message: 'name, email, id and password are required' });
-
-    if (await User.findOne({ email })) return res.status(400).json({ message: 'User already exists' });
-
-    const user = await User.create({
-      name,
-      email,
-      systemId,
-      password,
-      role,
-      facultyPermissions: { canEditScores },
-      cohort: cohort || ''
-    });
-
-    // If admin provided assignedFaculty for a student, attach bidirectionally (best-effort)
-    if (assignedFaculty && role === 'student' && mongoose.Types.ObjectId.isValid(assignedFaculty)) {
-      const faculty = await User.findById(assignedFaculty);
-      if (faculty && faculty.role === 'faculty') {
-        user.assignedFaculty = faculty._id;
-        await user.save();
-        if (!Array.isArray(faculty.students)) faculty.students = [];
-        if (!faculty.students.find(id => id.toString() === user._id.toString())) {
-          faculty.students.push(user._id);
-          await faculty.save();
-        }
-      }
-    }
-
-    return res.status(201).json({ message: `${role} account created successfully.`, user: user.toJSON() });
-  } catch (error) {
-    console.error('Admin create user error:', error);
-    return res.status(500).json({ message: 'Error creating user', details: error.message });
-  }
-});
-
-
-// ADMIN: Update user
-router.put('/admin/users/:id', protect, restrictTo(['admin']), async (req, res) => {
-  const id = req.params.id;
-  try {
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: 'Invalid user id' });
-
-    const allowed = ['name', 'email', 'systemId', 'role', 'cohort', 'assignedFaculty', 'facultyPermissions'];
-    const updates = {};
-    for (const key of allowed) {
-      if (req.body[key] !== undefined) updates[key] = req.body[key];
-    }
-
-    // If facultyPermissions passed as an object, only accept canEditScores boolean
-    if (updates.facultyPermissions && typeof updates.facultyPermissions === 'object') {
-      updates.facultyPermissions = { canEditScores: Boolean(updates.facultyPermissions.canEditScores) };
-    }
-
-    // If changing assignedFaculty ensure valid faculty id or null
-    if (updates.assignedFaculty) {
-      if (!mongoose.Types.ObjectId.isValid(updates.assignedFaculty)) {
-        return res.status(400).json({ message: 'Invalid assignedFaculty id' });
-      }
-      const fac = await User.findById(updates.assignedFaculty);
-      if (!fac || fac.role !== 'faculty') return res.status(400).json({ message: 'Assigned user is not a faculty' });
-    }
-
-    const user = await User.findById(id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    // Keep track of old assignedFaculty to update reverse refs if needed
-    const oldAssigned = user.assignedFaculty ? user.assignedFaculty.toString() : null;
-
-    // apply updates
-    Object.assign(user, updates);
-    await user.save();
-
-    // If assignedFaculty changed and user is a student -> ensure bidirectional ref
-    if (user.role === 'student') {
-      const newAssigned = user.assignedFaculty ? user.assignedFaculty.toString() : null;
-      if (oldAssigned !== newAssigned) {
-        // remove from old faculty.students
-        if (oldAssigned && mongoose.Types.ObjectId.isValid(oldAssigned)) {
-          const oldFac = await User.findById(oldAssigned);
-          if (oldFac && Array.isArray(oldFac.students)) {
-            oldFac.students = oldFac.students.filter(sid => sid.toString() !== user._id.toString());
-            await oldFac.save();
-          }
-        }
-        // add to new faculty.students
-        if (newAssigned && mongoose.Types.ObjectId.isValid(newAssigned)) {
-          const newFac = await User.findById(newAssigned);
-          if (newFac && newFac.role === 'faculty') {
-            newFac.students = newFac.students || [];
-            if (!newFac.students.find(sid => sid.toString() === user._id.toString())) {
-              newFac.students.push(user._id);
-              await newFac.save();
-            }
-          }
-        }
-      }
-    }
-
-    const out = user.toObject();
-    delete out.password;
-    res.json({ message: 'User updated', user: out });
-  } catch (error) {
-    console.error('Update user error:', error);
-    res.status(500).json({ message: 'Error updating user', details: error.message });
-  }
-});
-
-
-// ADMIN: Delete User
-router.delete('/admin/users/:id', protect, restrictTo(['admin']), async (req, res) => {
-  const id = req.params.id;
-
-  try {
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid user id' });
-    }
-
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Clean up relationships if needed
-    if (user.role === 'student' && user.assignedFaculty) {
-      await User.updateOne(
-        { _id: user.assignedFaculty },
-        { $pull: { students: user._id } }
-      );
-    }
-
-    if (user.role === 'faculty' && Array.isArray(user.students) && user.students.length > 0) {
-      await User.updateMany(
-        { _id: { $in: user.students } },
-        { $unset: { assignedFaculty: "" } }
-      );
-    }
-
-    await User.findByIdAndDelete(id);
-
-    res.json({ message: 'User deleted successfully' });
-  } catch (error) {
-    console.error('Delete user error:', error);
-    res.status(500).json({ message: 'Error deleting user', details: error.message });
-  }
-});
-
-
-// ADMIN: Reset user password
-router.patch('/admin/users/:id/password', protect, restrictTo(['admin']), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { newPassword } = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid user id' });
-    }
-
-    if (!newPassword || newPassword.length < 4) {
-      return res
-        .status(400)
-        .json({ message: 'Password must be at least 4 characters.' });
-    }
-
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    user.password = newPassword;
-
-    await user.save();
-
-    return res.json({ message: 'Password updated successfully.' });
-  } catch (err) {
-    console.error('[Admin change password] error:', err);
-    return res
-      .status(500)
-      .json({ message: 'Server error updating password' });
-  }
-}
-);
-
-
-
-// ADMIN: Update faculty permissions 
 router.patch('/admin/faculty/:id/permissions', protect, restrictTo(['admin']), async (req, res) => {
   const { canEditScores } = req.body;
   try {
@@ -288,7 +72,6 @@ router.patch('/admin/faculty/:id/permissions', protect, restrictTo(['admin']), a
 
 
 
-// ADMIN: Analytics (simple live metrics)
 router.get('/admin/analytics', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
@@ -315,7 +98,6 @@ router.get('/admin/analytics', protect, restrictTo(['admin']), async (req, res) 
 
 
 
-// Student submission status endpoint 
 router.get('/student/submission/:id/status', protect, restrictTo(['student']), async (req, res) => {
   const id = req.params.id;
   try {
@@ -332,7 +114,6 @@ router.get('/student/submission/:id/status', protect, restrictTo(['student']), a
 
 
 
-// Admin or faculty with permission might want to re-run scoring 
 router.post('/admin/submission/:id/reprocess', protect, restrictTo(['admin', 'faculty']), async (req, res) => {
   const id = req.params.id;
   try {
@@ -340,7 +121,6 @@ router.post('/admin/submission/:id/reprocess', protect, restrictTo(['admin', 'fa
     const sub = await Submission.findById(id);
     if (!sub) return res.status(404).json({ message: 'Submission not found' });
 
-    // Enqueue processing again
     const jobData = {
       submissionId: sub._id.toString(),
       studentId: sub.student.toString(),
@@ -357,7 +137,6 @@ router.post('/admin/submission/:id/reprocess', protect, restrictTo(['admin', 'fa
 });
 
 
-// GET /api/admin/tests
 router.get("/admin/tests", protect, restrictTo(["admin"]), async (req, res) => {
   try {
     const result = await paginate(req, TestSet, {
@@ -401,7 +180,6 @@ router.get("/admin/tests", protect, restrictTo(["admin"]), async (req, res) => {
 );
 
 
-// GET /api/admin/tests/:id
 router.get("/admin/tests/:id", protect, restrictTo(["admin"]), async (req, res) => {
   const { id } = req.params;
 
@@ -454,7 +232,6 @@ router.get("/admin/tests/:id", protect, restrictTo(["admin"]), async (req, res) 
 
 
 
-// GET /api/admin/student-score
 router.get(
   "/admin/student-score",
   protect,
@@ -463,9 +240,6 @@ router.get(
     try {
       const mongoose = require("mongoose");
 
-      /* ======================================================
-         HELPERS
-      ====================================================== */
       function isNum(v) {
         return typeof v === "number" && !Number.isNaN(v);
       }
@@ -489,9 +263,7 @@ router.get(
         };
       }
 
-      /* ======================================================
-         QUERY PARAMS
-      ====================================================== */
+     
       const {
         batchId,
         search = "",
@@ -505,9 +277,7 @@ router.get(
       const studentPage = Math.max(1, parseInt(page));
       const studentLimit = Math.min(100, parseInt(limit));
 
-      /* ======================================================
-         BATCH PAGINATION + SEARCH
-      ====================================================== */
+  
       req.query.page = batchPage;
       req.query.limit = batchLimit;
       req.query.search = search;
@@ -548,9 +318,7 @@ router.get(
         });
       }
 
-      /* ======================================================
-         STUDENT IDS (SOURCE OF TRUTH = Batch.students)
-      ====================================================== */
+  
       let studentIds = [];
 
       if (batchId && mongoose.Types.ObjectId.isValid(batchId)) {
@@ -567,9 +335,6 @@ router.get(
 
       studentIds = [...new Set(studentIds)];
 
-      /* ======================================================
-         USERS
-      ====================================================== */
       const users = await User.find({
         _id: { $in: studentIds },
         role: "student",
@@ -579,9 +344,7 @@ router.get(
 
       const userMap = new Map(users.map((u) => [String(u._id), u]));
 
-      /* ======================================================
-         STUDENT STATS (OPTIONAL)
-      ====================================================== */
+     
       const statsDocs = await StudentStats.find({
         student: { $in: studentIds },
       }).lean();
@@ -590,9 +353,7 @@ router.get(
         statsDocs.map((s) => [String(s.student), s])
       );
 
-      /* ======================================================
-         BUILD FULL STUDENT ROWS (INCLUDING NO-STATS)
-      ====================================================== */
+
       let allStudentRows = studentIds.map((sid) => {
         const u = userMap.get(sid);
         const st = statsByStudentId.get(sid);
@@ -615,9 +376,7 @@ router.get(
         };
       });
 
-      /* ======================================================
-         STUDENT SEARCH
-      ====================================================== */
+
       const searchLower = search.toLowerCase().trim();
 
       if (searchLower) {
@@ -628,17 +387,13 @@ router.get(
         );
       }
 
-      /* ======================================================
-         STUDENT PAGINATION (AFTER BUILD + SEARCH)
-      ====================================================== */
+
       const start = (studentPage - 1) * studentLimit;
       const end = start + studentLimit;
 
       const paginatedStudents = allStudentRows.slice(start, end);
 
-      /* ======================================================
-         SUMMARY (GLOBAL)
-      ====================================================== */
+  
       const summary = {
         totalStudentsInBatches: studentIds.length,
         totalStudentsWithAnyTest: statsDocs.length,
@@ -650,9 +405,7 @@ router.get(
         speakingAvg: avg(statsDocs.map((s) => s.speakingBand)),
       };
 
-      /* ======================================================
-         RESPONSE
-      ====================================================== */
+   
       return res.json({
         summary,
 
@@ -689,7 +442,6 @@ router.get(
 
 
 
-// GET /api/admin/test-attempts - View all test attempts
 router.get('/admin/test-attempts', protect, restrictTo(['admin']), async (req, res) => {
   try {
     const { studentId, testId, status, page = 1, limit = 50 } = req.query;
@@ -732,7 +484,7 @@ router.get('/admin/test-attempts', protect, restrictTo(['admin']), async (req, r
 });
 
 
-// POST /api/admin/allow-retry - Allow a student to retry a test
+
 router.post('/admin/allow-retry', protect, restrictTo(['admin']), async (req, res) => {
   const { studentId, testId, reason } = req.body;
 
@@ -741,7 +493,6 @@ router.post('/admin/allow-retry', protect, restrictTo(['admin']), async (req, re
   }
 
   try {
-    // Find the latest attempt for this student and test
     const attempt = await TestAttempt.findOne({
       student: studentId,
       testSet: testId
@@ -782,7 +533,6 @@ router.post('/admin/allow-retry', protect, restrictTo(['admin']), async (req, re
 });
 
 
-// POST /api/admin/revoke-retry - Revoke retry permission
 router.post('/admin/revoke-retry', protect, restrictTo(['admin']), async (req, res) => {
   const { studentId, testId } = req.body;
 

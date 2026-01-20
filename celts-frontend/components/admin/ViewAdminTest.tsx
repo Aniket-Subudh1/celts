@@ -136,7 +136,7 @@ export function ViewAdminTest() {
 
   async function fetchBatches() {
     try {
-      let res = await api.apiGet("/admin/batches");
+      let res = await api.apiGet("/admin/batches?all=true");
       if (!res.ok) {
         console.warn("[fetchBatches] endpoints failed", res);
         setBatches([]);

@@ -98,14 +98,12 @@ export function AdminAnalytics() {
         setLoading(true);
         setError(null);
         try {
-            const usersQuery = buildPaginationQuery(1, 50);
-
             const [statsRes, facRes, studRes, adminRes, bandRes] = await Promise.all([
                 api.apiGet("/admin/analytics"),
-                api.apiGet(`/admin/users?role=faculty&${usersQuery}`),
-                api.apiGet(`/admin/users?role=student&${usersQuery}`),
-                api.apiGet(`/admin/users?role=admin&${usersQuery}`),
-                api.apiGet(`/studentStats/admin/all?${usersQuery}`),
+                api.apiGet("/admin/users?role=faculty&all=true"),
+                api.apiGet("/admin/users?role=student&all=true"),
+                api.apiGet("/admin/users?role=admin&all=true"),
+                api.apiGet("/studentStats/admin/all"),
             ]);
 
             if (!statsRes.ok) {
