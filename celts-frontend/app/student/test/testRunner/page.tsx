@@ -686,29 +686,31 @@ function TestRunnerContent() {
 }, [test, attemptId, sessionToken]);
 
 
+const handleStartTest = async () => {
+  console.log("Starting test...");
+  setStartAttempting(true);
 
-  const handleStartTest = async () => {
-    console.log("Starting test...");
-    setStartAttempting(true);
+  try {
+    console.log("Requesting microphone permission...");
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    setMicrophonePermission("granted");
+    stream.getTracks().forEach(track => track.stop());
 
-    try {
-      console.log("Requesting microphone permission...");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setMicrophonePermission("granted");
-      stream.getTracks().forEach((track) => track.stop());
-      toast.success("Microphone Access Granted", {
-        description: "Speaking questions will work properly during the test.",
-        duration: 3000,
-      });
-      console.log("Microphone permission granted");
-    } catch (micError) {
-      console.warn("Microphone permission denied:", micError);
-      setMicrophonePermission("denied");
-      toast.warning("Microphone Access Denied", {
-        description: "You can still take the test, but speaking questions may not work properly.",
-        duration: 5000,
-      });
-    }
+    toast.success("Microphone Access Granted", {
+      description: "Speaking questions will work properly during the test.",
+      duration: 3000,
+    });
+
+    console.log("Microphone permission granted");
+  } catch (micError) {
+    console.warn("Microphone permission denied:", micError);
+    setMicrophonePermission("denied");
+
+    toast.warning("Microphone Access Denied", {
+      description: "You can still take the test, but speaking questions may not work properly.",
+      duration: 5000,
+    });
+  }
 
     try {
       const startRes = await api.apiPost(`/student/tests/${testId}/start`, {});
@@ -716,10 +718,8 @@ function TestRunnerContent() {
         const errorMessage = startRes.error?.message || "Failed to start test attempt";
 
         if (errorMessage.includes("already in progress")) {
-          // Check for existing attempt in error response
-          const existingAttempt = startRes.error?.existingAttempt;
-          if (existingAttempt?.attemptId) {
-            const existingAttemptId = existingAttempt.attemptId;
+          if (startRes.data?.existingAttempt) {
+            const existingAttemptId = startRes.data.existingAttempt.attemptId;
             setAttemptId(existingAttemptId);
             setHasStarted(true);
             toast.success("Resumed Test", {
@@ -727,20 +727,6 @@ function TestRunnerContent() {
               duration: 3000,
             });
             setStartAttempting(false);
-            cleanupAttemptedRef.current = false; // Reset cleanup flag
-            return;
-          }
-
-          // Prevent infinite cleanup loop
-          if (cleanupAttemptedRef.current) {
-            toast.error("Session Conflict", {
-              description: "Unable to start test. Please refresh the page and try again.",
-              duration: 5000,
-            });
-            setStartAttempting(false);
-            setTimeout(() => {
-              window.location.reload();
-            }, 2000);
             return;
           }
 
@@ -749,8 +735,6 @@ function TestRunnerContent() {
             duration: 2000,
           });
 
-          cleanupAttemptedRef.current = true; // Mark that we've attempted cleanup
-          
           try {
             await api.apiPost(`/student/tests/${testId}/cleanup`, {});
             setTimeout(() => {
@@ -788,7 +772,6 @@ function TestRunnerContent() {
 
       setAttemptId(startRes.data.attemptId);
       console.log("Test attempt started:", startRes.data);
-      cleanupAttemptedRef.current = false; // Reset cleanup flag on successful start
 
       if (sessionToken) {
         try {
@@ -799,40 +782,42 @@ function TestRunnerContent() {
             clientStartTime: new Date().toISOString(),
           });
 
-          if (examStartRes.ok) {
-            console.log("Exam security session started successfully");
-          } else {
-            console.warn("Failed to start exam security session:", examStartRes.error);
-          }
-        } catch (examStartError) {
-          console.warn("Exam security session start error:", examStartError);
+        if (examStartRes.ok) {
+          console.log("Exam security session started successfully");
+        } else {
+          console.warn("Failed to start exam security session:", examStartRes.error);
         }
+      } catch (examStartError) {
+        console.warn("Exam security session start error:", examStartError);
       }
+    }
 
-      if (document.documentElement.requestFullscreen) {
-        console.log("Requesting fullscreen...");
-        await document.documentElement.requestFullscreen();
-        console.log("Fullscreen granted, starting test");
-        setHasStarted(true);
-      } else {
-        console.log("Fullscreen not supported, starting anyway");
-        toast.warning("Fullscreen not supported", {
-          description: "Starting test without fullscreen mode.",
-          duration: 3000,
-        });
-        setHasStarted(true);
-      }
-    } catch (err) {
-      console.error("Fullscreen failed:", err);
-      toast.warning("Fullscreen was denied", {
-        description: "Starting test without fullscreen mode. Note: This may affect proctoring.",
-        duration: 5000,
+    // Fullscreen handling
+    if (document.documentElement.requestFullscreen) {
+      console.log("Requesting fullscreen...");
+      await document.documentElement.requestFullscreen();
+      console.log("Fullscreen granted, starting test");
+      setHasStarted(true);
+    } else {
+      console.log("Fullscreen not supported, starting anyway");
+      toast.warning("Fullscreen not supported", {
+        description: "Starting test without fullscreen mode.",
+        duration: 3000,
       });
       setHasStarted(true);
-    } finally {
-      setStartAttempting(false);
     }
-  };
+  } catch (err) {
+    console.error("Fullscreen failed:", err);
+    toast.warning("Fullscreen was denied", {
+      description: "Starting test without fullscreen mode. Note: This may affect proctoring.",
+      duration: 5000,
+    });
+    setHasStarted(true);
+  } finally {
+    setStartAttempting(false);
+  }
+};
+
 
   const fullscreenExitCountRef = useRef(0);
   const backgroundSubmissionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
